@@ -220,7 +220,7 @@ class DigitalFace:
 
     def _draw_mouth(self, cx: int, cy: int, theme: dict) -> None:
         if self.expression == "happy":
-            pygame.draw.arc(self.screen, theme["mouth"], (cx - 74, cy - 14, 148, 88), 0.15, 2.95, 7)
+            pygame.draw.arc(self.screen, theme["mouth"], (cx - 74, cy + 0, 148, 88), 3.25, 6.17, 7)
         elif self.expression == "surprised":
             pygame.draw.circle(self.screen, theme["mouth"], (cx, cy + 64), 22, 6)
         elif self.expression == "listening":

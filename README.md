@@ -1,48 +1,33 @@
 # Digital Face for Raspberry Pi 4 (3.5 inch SPI LCD)
 
-This project displays an animated digital face on a Raspberry Pi SPI LCD.
+A colorful animated digital face for Raspberry Pi OS Lite + SPI LCD.
 
-It is designed for Raspberry Pi OS Lite and supports direct framebuffer output (best for headless or console-only setups).
-
-## Project Location
+## Project Path
 
 - /home/eric/projects/digitalface
 
-## What This Program Does
+## Current Features
 
-- Draws a simple animated face (eyes, mouth, blink)
-- Supports expressions:
+- Fancy animated face UI with 4 expressions:
+  - happy (default)
   - neutral
-  - happy
   - listening
   - surprised
-- Runs with pygame
-- Can write directly to framebuffer for SPI LCDs
+- Framebuffer output for SPI LCD (`/dev/fb1` by default)
+- Single-instance protection (prevents duplicate GUI processes)
+- Runtime face switching without app restart using helper scripts
+- Optional auto-cycle mode to switch faces periodically
 
 ## Requirements
 
 - Raspberry Pi 4
-- 3.5 inch SPI LCD (framebuffer driver available)
+- 3.5 inch SPI LCD with framebuffer driver
 - Raspberry Pi OS Lite
 - Python 3.11+
 
-## Quick Run (Already Installed Project)
+## Setup on Raspberry Pi OS Lite
 
-```bash
-cd /home/eric/projects/digitalface
-source .venv/bin/activate
-python main.py --force-fb --fbdev /dev/fb1
-```
-
-If your LCD is mirrored from fb0 with fbcp, use:
-
-```bash
-python main.py --force-fb --fbdev /dev/fb0
-```
-
-## Fresh Setup on Raspberry Pi OS Lite
-
-### 1) Update OS and install packages
+### 1) Install base packages
 
 ```bash
 sudo apt update
@@ -54,24 +39,10 @@ sudo apt install -y python3 python3-venv python3-pip git
 
 ```bash
 sudo raspi-config nonint do_spi 0
-```
-
-Reboot after enabling SPI:
-
-```bash
 sudo reboot
 ```
 
-### 3) Get project files
-
-If you already have the folder, skip this.
-
-```bash
-cd /home/eric/projects
-# put your project here (git clone or copy files)
-```
-
-### 4) Create virtual environment and install dependencies
+### 3) Create venv and install dependencies
 
 ```bash
 cd /home/eric/projects/digitalface
@@ -81,19 +52,7 @@ python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-### 5) Detect framebuffer devices
-
-```bash
-ls -l /dev/fb*
-cat /sys/class/graphics/fb0/name
-cat /sys/class/graphics/fb1/name
-```
-
-Typical result for SPI LCD:
-- fb0: BCM2708 FB
-- fb1: fb_ili9486 (or similar SPI panel driver)
-
-### 6) Test display
+## Run Manually
 
 ```bash
 cd /home/eric/projects/digitalface
@@ -101,33 +60,70 @@ source .venv/bin/activate
 python main.py --force-fb --fbdev /dev/fb1
 ```
 
-If nothing appears, try `/dev/fb0`.
+If your display path differs, try `/dev/fb0`.
 
-## Keep Face Displayed Constantly (Autostart)
+## Startup Script (Kill Old and Start New)
 
-Use a systemd service so the face runs at boot and is not tied to your terminal session.
+Use this script to stop existing `main.py` processes and start a clean instance:
 
-### 1) Disable fbcp autostart (if present)
+```bash
+cd /home/eric/projects/digitalface
+./start_digitalface.sh
+```
 
-Check:
+Optional framebuffer arg:
+
+```bash
+./start_digitalface.sh /dev/fb0
+```
+
+## Face Switching Scripts
+
+### Set fixed face
+
+```bash
+./set_face.sh happy
+./set_face.sh neutral
+./set_face.sh listening
+./set_face.sh surprised
+```
+
+### Auto mode (switch every 60 seconds by default)
+
+```bash
+./set_face.sh auto
+```
+
+Or specify interval seconds:
+
+```bash
+./set_face.sh auto 30
+```
+
+### List supported faces
+
+```bash
+./list_faces.sh
+```
+
+### Start/stop background cycle helper directly
+
+```bash
+./cycle_faces_bg.sh 60
+./stop_cycle_faces.sh
+```
+
+## Systemd Autostart (Recommended)
+
+### 1) Disable fbcp autostart if present
 
 ```bash
 grep -n 'fbcp' /etc/rc.local
-```
-
-If you see `fbcp &`, comment it out:
-
-```bash
 sudo sed -i 's/^fbcp \&$/# fbcp disabled for digitalface/' /etc/rc.local
-```
-
-Stop running fbcp for current boot:
-
-```bash
 sudo pkill fbcp || true
 ```
 
-### 2) Create digitalface service
+### 2) Create service
 
 ```bash
 sudo tee /etc/systemd/system/digitalface.service > /dev/null << 'SERVICE'
@@ -139,6 +135,7 @@ After=local-fs.target
 Type=simple
 User=eric
 WorkingDirectory=/home/eric/projects/digitalface
+Environment=SDL_AUDIODRIVER=dummy
 ExecStart=/home/eric/projects/digitalface/.venv/bin/python /home/eric/projects/digitalface/main.py --force-fb --fbdev /dev/fb1
 Restart=always
 RestartSec=2
@@ -149,7 +146,7 @@ WantedBy=multi-user.target
 SERVICE
 ```
 
-### 3) Enable and start service
+### 3) Enable/start service
 
 ```bash
 sudo systemctl daemon-reload
@@ -166,45 +163,24 @@ systemctl status digitalface.service --no-pager
 
 ## Useful Commands
 
-Start manually:
-
-```bash
-cd /home/eric/projects/digitalface
-source .venv/bin/activate
-python main.py --force-fb --fbdev /dev/fb1
-```
-
-Stop service:
-
-```bash
-sudo systemctl stop digitalface.service
-```
-
-Restart service:
-
 ```bash
 sudo systemctl restart digitalface.service
-```
-
-View logs:
-
-```bash
+sudo systemctl stop digitalface.service
 journalctl -u digitalface.service -n 100 --no-pager
 ```
 
 ## Troubleshooting
 
-### Face and terminal keep switching
+### Terminal and face switching
 
-Cause:
-- fbcp mirrors fb0 to LCD while terminal still writes to source framebuffer.
+- Ensure `fbcp` is disabled/stopped.
+- Ensure only one face process is running:
 
-Fix:
-- disable `fbcp` in `/etc/rc.local`
-- stop current fbcp process: `sudo pkill fbcp`
-- run digitalface as service on the correct fb device
+```bash
+pgrep -af '/home/eric/projects/digitalface/main.py'
+```
 
-### Command `.venv/bin/activate` returns permission denied (exit 126)
+### `.venv/bin/activate` returns exit 126
 
 Use:
 
@@ -218,21 +194,18 @@ or
 . .venv/bin/activate
 ```
 
-### Black screen
+### No image / black screen
 
-- test both framebuffer devices (`/dev/fb0`, `/dev/fb1`)
-- verify user is in video group: `id`
-- verify LCD driver is loaded: `lsmod | grep -E 'fb_ili|fbtft'`
-
-### Service does not start
-
-- check status and logs:
+- Check framebuffer devices:
 
 ```bash
-systemctl status digitalface.service --no-pager
-journalctl -u digitalface.service -n 200 --no-pager
+ls -l /dev/fb*
+cat /sys/class/graphics/fb0/name
+cat /sys/class/graphics/fb1/name
 ```
 
-## Next Step
+- Check display driver:
 
-Add a small local API (socket or HTTP) so a speech listener can switch expressions automatically while you talk.
+```bash
+lsmod | grep -E 'fb_ili|fbtft'
+```
