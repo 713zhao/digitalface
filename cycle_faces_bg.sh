@@ -2,9 +2,16 @@
 set -euo pipefail
 
 INTERVAL="${1:-6}"
-PID_FILE="/tmp/digitalface_cycle.pid"
-CONTROL_FILE="/tmp/digitalface_expression"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RUNTIME_DIR="$SCRIPT_DIR/.runtime"
+PID_FILE="$RUNTIME_DIR/digitalface_cycle.pid"
+CONTROL_FILE="$RUNTIME_DIR/digitalface_expression"
+LOG_FILE="$RUNTIME_DIR/digitalface_cycle.log"
 FACES=(happy neutral listening surprised)
+
+mkdir -p "$RUNTIME_DIR"
+touch "$CONTROL_FILE"
+chmod 666 "$CONTROL_FILE" || true
 
 if [[ -f "$PID_FILE" ]]; then
   old_pid="$(cat "$PID_FILE" || true)"
@@ -22,6 +29,6 @@ fi
     idx=$(( (idx + 1) % ${#FACES[@]} ))
     sleep "$INTERVAL"
   done
-) >/tmp/digitalface_cycle.log 2>&1 &
+) >"$LOG_FILE" 2>&1 &
 
 echo "cycle started"

@@ -3,8 +3,11 @@ set -euo pipefail
 
 FACE="${1:-happy}"
 INTERVAL="${2:-60}"
-CONTROL_FILE="/tmp/digitalface_expression"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RUNTIME_DIR="$SCRIPT_DIR/.runtime"
+CONTROL_FILE="$RUNTIME_DIR/digitalface_expression"
+
+mkdir -p "$RUNTIME_DIR"
 
 if [[ "$FACE" == "auto" ]]; then
   "$SCRIPT_DIR/cycle_faces_bg.sh" "$INTERVAL"

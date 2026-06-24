@@ -6,6 +6,10 @@ A colorful animated digital face for Raspberry Pi OS Lite + SPI LCD.
 
 - /home/eric/projects/digitalface
 
+## Architecture Reference
+
+- See `interfaces.md` for the driver/application layer contract and extension guidelines.
+
 ## Current Features
 
 - Fancy animated face UI with 4 expressions:
@@ -17,6 +21,9 @@ A colorful animated digital face for Raspberry Pi OS Lite + SPI LCD.
 - Single-instance protection (prevents duplicate GUI processes)
 - Runtime face switching without app restart using helper scripts
 - Optional auto-cycle mode to switch faces periodically
+- Driver-level LED backlight on/off control
+- Auto LED backlight off after 10 minutes of no face change and no touch input
+- Touch input support in framebuffer mode to wake display
 
 ## Requirements
 
@@ -24,6 +31,18 @@ A colorful animated digital face for Raspberry Pi OS Lite + SPI LCD.
 - 3.5 inch SPI LCD with framebuffer driver
 - Raspberry Pi OS Lite
 - Python 3.11+
+
+## Detected Hardware On This Device
+
+From runtime detection on this Raspberry Pi:
+
+- LCD framebuffer driver (`/dev/fb1`): `fb_ili9486`
+- Touch controller: `ADS7846 Touchscreen` (`/dev/input/event1`)
+
+Notes:
+
+- This identifies controller/driver family, not exact seller brand/model name.
+- The app uses framebuffer mode with `--fbdev /dev/fb1` by default.
 
 ## Setup on Raspberry Pi OS Lite
 
@@ -170,6 +189,108 @@ journalctl -u digitalface.service -n 100 --no-pager
 ```
 
 ## Troubleshooting
+
+### How to physically test touch input
+
+If you touch the screen and want to confirm touch is really working, use one of these methods.
+
+#### Method A: Quick raw event test (recommended)
+
+Use the helper script:
+
+```bash
+cd /home/eric/projects/digitalface
+./test_touch.sh
+```
+
+If auto-detection picks the wrong device, pass it explicitly:
+
+```bash
+./test_touch.sh /dev/input/event1
+```
+
+The script starts `evtest` and shows live touch events.
+
+1) Find the touch event node (usually ADS7846):
+
+```bash
+for e in /dev/input/event*; do
+  n=$(basename "$e")
+  name=$(cat "/sys/class/input/$n/device/name" 2>/dev/null || true)
+  printf "%s: %s\n" "$e" "$name"
+done
+```
+
+2) Observe events while touching the panel (replace event index if needed):
+
+```bash
+sudo evtest /dev/input/event1
+```
+
+What to expect when touch works:
+
+- You will see changing `EV_ABS` values (X/Y coordinates)
+- You will see press/release events (`BTN_TOUCH`)
+
+If nothing changes when touching, check wiring/driver/module.
+
+#### Method B: Verify app-level touch wake behavior
+
+The app now turns LED display off after 10 minutes only when both are true:
+
+- no expression/display change
+- no touch event
+
+To test quickly:
+
+1) Start app in framebuffer mode:
+
+```bash
+cd /home/eric/projects/digitalface
+source .venv/bin/activate
+python main.py --force-fb --fbdev /dev/fb1
+```
+
+2) Wait until screen sleeps by idle rule.
+
+3) Touch the screen.
+
+Expected behavior:
+
+- Display LED wakes and animation resumes.
+
+Tip:
+
+- For rapid testing during development, temporarily reduce timeout in `main.py`:
+  - change `IDLE_TIMEOUT_SECONDS = 10 * 60` to e.g. `30`
+  - restore it to 10 minutes after validation.
+
+### Backlight control notes (mhs35/tft35a)
+
+Some 3.5 inch SPI overlays do not expose `/sys/class/backlight/*`.
+For this device (`dtoverlay=mhs35`), the app now tries these in order:
+
+- framebuffer blank ioctl (`FBIOBLANK`)
+- LED-class brightness node (for example `/sys/class/leds/default-on`)
+- GPIO fallback via `pinctrl` (default `GPIO18`)
+
+Optional overrides:
+
+- `DIGITALFACE_BACKLIGHT_SYSFS=/sys/class/backlight/<node>`
+- `DIGITALFACE_BACKLIGHT_LED=<led-name>`
+- `DIGITALFACE_BACKLIGHT_GPIO=<pin-number>`
+- `DIGITALFACE_BACKLIGHT_GPIO=<pin1,pin2,...>` (comma or colon separated)
+- `DIGITALFACE_BACKLIGHT_GPIO_ACTIVE_LOW=1` (if your board uses inverted logic)
+
+If backlight control needs sysfs/gpio writes, run service with privileges that can access those nodes.
+
+For LCDWiki MSP3520 specifically:
+
+- The module interface table marks `LED` as pin `8` (backlight control, high=on).
+- If your wiring maps that to Raspberry Pi physical pin `8`, use `GPIO14`:
+  - `DIGITALFACE_BACKLIGHT_GPIO=14`
+- If your board inverts logic, set:
+  - `DIGITALFACE_BACKLIGHT_GPIO_ACTIVE_LOW=1`
 
 ### Terminal and face switching
 
