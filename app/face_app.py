@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """Application layer: face logic, text, icons, animations."""
 
+import json
 import math
+import os
 import time
+
+import pygame
 
 from driver.display_driver import DisplayDriver
 
@@ -53,6 +57,7 @@ THEMES = {
         "label": "SURPRISED",
     },
 }
+EXPRESSION_ORDER = ["happy", "neutral", "listening", "surprised"]
 
 
 def _lerp(a: int, b: int, t: float) -> int:
@@ -60,15 +65,23 @@ def _lerp(a: int, b: int, t: float) -> int:
 
 
 class FaceApplication:
-    def __init__(self, driver: DisplayDriver, control_file: str, default_expression: str = "happy") -> None:
+    def __init__(self, driver: DisplayDriver, control_file: str, default_expression: str = "happy", pause_file: str | None = None, hmi_request_file: str | None = None, hmi_default_duration: float = 10.0) -> None:
         self.driver = driver
         self.control_file = control_file
+        self.pause_file = pause_file
         self.expression = default_expression
         self._display_changed = True
         self.blink_closed_until = 0.0
         self.next_blink_at = time.time() + 2.2
         self.next_control_poll_at = 0.0
         self.bg_cache = {}
+        self.hmi_request_file = hmi_request_file
+        self.hmi_default_duration = hmi_default_duration
+        self.hmi_text: str | None = None
+        self.hmi_until: float = 0.0
+        self.hmi_duration: float = 0.0
+        self.next_hmi_poll_at: float = 0.0
+        self._hmi_font: pygame.font.Font | None = None
 
     def set_expression(self, name: str) -> None:
         if name in THEMES:
@@ -81,16 +94,36 @@ class FaceApplication:
         self._display_changed = False
         return changed
 
+    def cycle_to_next_expression(self) -> None:
+        try:
+            idx = EXPRESSION_ORDER.index(self.expression)
+        except ValueError:
+            idx = 0
+        next_idx = (idx + 1) % len(EXPRESSION_ORDER)
+        self.set_expression(EXPRESSION_ORDER[next_idx])
+
     def update(self, now: float) -> None:
         if now >= self.next_control_poll_at:
-            self._poll_external_expression()
+            self._poll_external_expression(now)
             self.next_control_poll_at = now + 0.35
+
+        if now >= self.next_hmi_poll_at:
+            self._poll_hmi_request(now)
+            self.next_hmi_poll_at = now + 0.1
+
+        if self.hmi_text is not None and now >= self.hmi_until:
+            self.hmi_text = None
+            self._display_changed = True
 
         if now >= self.next_blink_at:
             self.blink_closed_until = now + 0.10
             self.next_blink_at = now + 2.0 + (math.sin(now) + 1.0) * 0.4
 
     def render(self, now: float) -> None:
+        if self.hmi_text is not None and now < self.hmi_until:
+            self._render_hmi_overlay(now)
+            return
+
         theme = THEMES.get(self.expression, THEMES["happy"])
         self.driver.blit(self._get_background(self.expression), (0, 0))
 
@@ -114,7 +147,98 @@ class FaceApplication:
         self._draw_eyes(cx, cy, now, theme)
         self._draw_mouth(cx, cy, theme)
 
-    def _poll_external_expression(self) -> None:
+    def _poll_hmi_request(self, now: float) -> None:
+        if not self.hmi_request_file:
+            return
+        try:
+            with open(self.hmi_request_file, "r", encoding="utf-8") as f:
+                content = f.read().strip()
+            os.unlink(self.hmi_request_file)
+        except (FileNotFoundError, OSError):
+            return
+        try:
+            data = json.loads(content)
+        except (ValueError, TypeError):
+            return
+        text = str(data.get("text", "")).strip()
+        if not text:
+            return
+        try:
+            duration = float(data.get("duration") or self.hmi_default_duration)
+        except (TypeError, ValueError):
+            duration = self.hmi_default_duration
+        self.hmi_text = text
+        self.hmi_duration = max(1.0, duration)
+        self.hmi_until = now + self.hmi_duration
+        self._display_changed = True
+
+    def _get_hmi_font(self) -> pygame.font.Font:
+        if self._hmi_font is None:
+            self._hmi_font = pygame.font.Font(None, 36)
+        return self._hmi_font
+
+    def _wrap_text(self, text: str, font: pygame.font.Font, max_width: int) -> list[str]:
+        lines: list[str] = []
+        for paragraph in text.splitlines():
+            words = paragraph.split()
+            if not words:
+                lines.append("")
+                continue
+            current = ""
+            for word in words:
+                test = (current + " " + word).strip()
+                if font.size(test)[0] <= max_width:
+                    current = test
+                else:
+                    if current:
+                        lines.append(current)
+                    current = word
+            if current:
+                lines.append(current)
+        return lines
+
+    def _render_hmi_overlay(self, now: float) -> None:
+        W, H = self.driver.width, self.driver.height
+        self.driver.fill((10, 12, 22))
+
+        padding = 16
+        panel_rect = (padding, padding, W - 2 * padding, H - 2 * padding)
+        self.driver.rect((22, 28, 52), panel_rect)
+        self.driver.rect((80, 130, 210), panel_rect, 2)
+
+        font = self._get_hmi_font()
+        text_margin = 20
+        wrap_width = W - 2 * padding - 2 * text_margin
+        lines = self._wrap_text(self.hmi_text or "", font, wrap_width)
+        line_h = font.get_linesize()
+        total_h = line_h * len(lines)
+        start_y = padding + (H - 2 * padding - total_h) // 2
+
+        for i, line in enumerate(lines):
+            lw, _ = font.size(line)
+            x = (W - lw) // 2
+            y = start_y + i * line_h
+            self.driver.text(line, (220, 238, 255), (x, y), font=font)
+
+        remaining = max(0.0, self.hmi_until - now)
+        frac = remaining / self.hmi_duration if self.hmi_duration > 0 else 0.0
+        bar_y = H - padding - 12
+        bar_x = padding + text_margin
+        bar_w = W - 2 * padding - 2 * text_margin
+        self.driver.rect((35, 45, 75), (bar_x, bar_y, bar_w, 6))
+        if frac > 0:
+            self.driver.rect((80, 130, 210), (bar_x, bar_y, int(bar_w * frac), 6))
+
+    def _poll_external_expression(self, now: float) -> None:
+        if self.pause_file:
+            try:
+                with open(self.pause_file, "r", encoding="utf-8") as f:
+                    pause_until = float(f.read().strip())
+                if now < pause_until:
+                    return
+            except (FileNotFoundError, OSError, ValueError):
+                pass
+
         try:
             with open(self.control_file, "r", encoding="utf-8") as f:
                 requested = f.read().strip().lower()

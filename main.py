@@ -16,18 +16,29 @@ from driver import create_framebuffer_driver, create_sdl_driver, create_touch_dr
 WIDTH = 480
 HEIGHT = 320
 FPS = 30
-FB_FPS = 8
-IDLE_TIMEOUT_SECONDS = None
+FB_FPS = 20
+IDLE_TIMEOUT_SECONDS = 10 * 60
 DEFAULT_CYCLE_INTERVAL_SECONDS = 6
+DISPLAY_ROTATE_180 = True
+DOUBLE_TAP_WINDOW_SECONDS = 0.70
+TOUCH_TAP_DEBOUNCE_SECONDS = 0.08
+DOUBLE_TAP_CYCLE_PAUSE_SECONDS = 20.0
 RUNTIME_DIR = os.path.join(os.path.dirname(__file__), ".runtime")
 LOCK_FILE = os.path.join(RUNTIME_DIR, f"digitalface_{os.getuid()}.lock")
 FACE_CONTROL_FILE = os.path.join(RUNTIME_DIR, "digitalface_expression")
+FACE_CONTROL_PAUSE_FILE = os.path.join(RUNTIME_DIR, "digitalface_expression_pause_until")
+HMI_REQUEST_FILE = os.path.join(RUNTIME_DIR, "digitalface_hmi_request")
+HMI_DEFAULT_DURATION_SECONDS = 10
 _lock_handle = None
 
 
 def acquire_single_instance_lock() -> bool:
     global _lock_handle
     os.makedirs(RUNTIME_DIR, exist_ok=True)
+    try:
+        os.chmod(RUNTIME_DIR, 0o1777)
+    except OSError:
+        pass
     _lock_handle = open(LOCK_FILE, "w")
     try:
         fcntl.flock(_lock_handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -54,10 +65,30 @@ def ensure_default_face_cycle() -> None:
         return
 
 
+def handle_tap_for_next_face(app: FaceApplication, now: float, last_tap_at: float) -> float:
+    if last_tap_at > 0 and (now - last_tap_at) <= DOUBLE_TAP_WINDOW_SECONDS:
+        app.cycle_to_next_expression()
+        try:
+            with open(FACE_CONTROL_FILE, "w", encoding="utf-8") as f:
+                f.write(app.expression)
+        except OSError:
+            pass
+        try:
+            with open(FACE_CONTROL_PAUSE_FILE, "w", encoding="utf-8") as f:
+                f.write(str(now + DOUBLE_TAP_CYCLE_PAUSE_SECONDS))
+        except OSError:
+            pass
+        return 0.0
+    return now
+
+
 def run_sdl_mode() -> None:
-    driver = create_sdl_driver(WIDTH, HEIGHT)
-    app = FaceApplication(driver, FACE_CONTROL_FILE, default_expression="happy")
+    driver = create_sdl_driver(WIDTH, HEIGHT, rotate_180=DISPLAY_ROTATE_180)
+    app = FaceApplication(driver, FACE_CONTROL_FILE, default_expression="happy", pause_file=FACE_CONTROL_PAUSE_FILE, hmi_request_file=HMI_REQUEST_FILE, hmi_default_duration=HMI_DEFAULT_DURATION_SECONDS)
     clock = pygame.time.Clock()
+    last_tap_at = 0.0
+    last_touch_at = time.time()
+    display_sleeping = False
     running = True
     while running:
         now = time.time()
@@ -65,6 +96,10 @@ def run_sdl_mode() -> None:
             if event.type == pygame.QUIT:
                 running = False
             elif event.type == pygame.KEYDOWN:
+                last_touch_at = now
+                if display_sleeping:
+                    driver.set_led_enabled(True)
+                    display_sleeping = False
                 if event.key in (pygame.K_ESCAPE, pygame.K_q):
                     running = False
                 elif event.key == pygame.K_1:
@@ -75,21 +110,42 @@ def run_sdl_mode() -> None:
                     app.set_expression("listening")
                 elif event.key == pygame.K_4:
                     app.set_expression("surprised")
+            elif event.type in (pygame.MOUSEBUTTONDOWN, pygame.FINGERDOWN):
+                last_touch_at = now
+                if display_sleeping:
+                    driver.set_led_enabled(True)
+                    display_sleeping = False
+                last_tap_at = handle_tap_for_next_face(app, now, last_tap_at)
 
         app.update(now)
         app.consume_display_changed()
-        app.render(now)
-        driver.present()
+
+        if IDLE_TIMEOUT_SECONDS is not None and (now - last_touch_at) >= IDLE_TIMEOUT_SECONDS and not display_sleeping:
+            driver.set_led_enabled(False)
+            display_sleeping = True
+
+        if app.hmi_text is not None and display_sleeping:
+            driver.set_led_enabled(True)
+            display_sleeping = False
+            last_touch_at = now
+
+        if not display_sleeping:
+            app.render(now)
+            driver.present()
         clock.tick(FPS)
 
     driver.close()
 
 
 def run_framebuffer_mode(fbdev: str) -> None:
-    driver = create_framebuffer_driver(fbdev, WIDTH, HEIGHT)
+    driver = create_framebuffer_driver(fbdev, WIDTH, HEIGHT, rotate_180=DISPLAY_ROTATE_180)
     touch = create_touch_driver()
-    app = FaceApplication(driver, FACE_CONTROL_FILE, default_expression="happy")
+    app = FaceApplication(driver, FACE_CONTROL_FILE, default_expression="happy", pause_file=FACE_CONTROL_PAUSE_FILE, hmi_request_file=HMI_REQUEST_FILE, hmi_default_duration=HMI_DEFAULT_DURATION_SECONDS)
     clock = pygame.time.Clock()
+    last_tap_at = 0.0
+    last_touch_tap_event_at = 0.0
+    last_touch_at = time.time()
+    display_sleeping = False
     running = True
 
     def stop_handler(_sig: int, _frame: object) -> None:
@@ -102,12 +158,30 @@ def run_framebuffer_mode(fbdev: str) -> None:
     try:
         while running:
             now = time.time()
-            touch.poll()
+            touch_down = touch.poll()
+            if touch_down and (now - last_touch_tap_event_at) >= TOUCH_TAP_DEBOUNCE_SECONDS:
+                last_touch_at = now
+                if display_sleeping:
+                    driver.set_led_enabled(True)
+                    display_sleeping = False
+                last_tap_at = handle_tap_for_next_face(app, now, last_tap_at)
+                last_touch_tap_event_at = now
 
             app.update(now)
             app.consume_display_changed()
-            app.render(now)
-            driver.present()
+
+            if IDLE_TIMEOUT_SECONDS is not None and (now - last_touch_at) >= IDLE_TIMEOUT_SECONDS and not display_sleeping:
+                driver.set_led_enabled(False)
+                display_sleeping = True
+
+            if app.hmi_text is not None and display_sleeping:
+                driver.set_led_enabled(True)
+                display_sleeping = False
+                last_touch_at = now
+
+            if not display_sleeping:
+                app.render(now)
+                driver.present()
             clock.tick(FB_FPS)
     finally:
         touch.close()
