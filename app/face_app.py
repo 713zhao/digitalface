@@ -80,6 +80,10 @@ class FaceApplication:
         self.hmi_text: str | None = None
         self.hmi_until: float = 0.0
         self.hmi_duration: float = 0.0
+        self.hmi_repeat: bool = False
+        self.hmi_repeat_interval: float = 60.0
+        self.hmi_next_repeat_at: float = 0.0
+        self._hmi_queue: list[dict] = []
         self.next_hmi_poll_at: float = 0.0
         self._hmi_font: pygame.font.Font | None = None
 
@@ -112,8 +116,19 @@ class FaceApplication:
             self.next_hmi_poll_at = now + 0.1
 
         if self.hmi_text is not None and now >= self.hmi_until:
-            self.hmi_text = None
-            self._display_changed = True
+            if self.hmi_repeat:
+                if self.hmi_next_repeat_at == 0.0:
+                    # just finished showing — schedule next repeat
+                    self.hmi_next_repeat_at = now + self.hmi_repeat_interval
+                elif now >= self.hmi_next_repeat_at:
+                    # repeat fires — show again
+                    self.hmi_until = now + self.hmi_duration
+                    self.hmi_next_repeat_at = 0.0
+                    self._display_changed = True
+            else:
+                self.hmi_text = None
+                self._display_changed = True
+                self._dequeue_hmi(now)
 
         if now >= self.next_blink_at:
             self.blink_closed_until = now + 0.10
@@ -147,6 +162,28 @@ class FaceApplication:
         self._draw_eyes(cx, cy, now, theme)
         self._draw_mouth(cx, cy, theme)
 
+    def dismiss_hmi(self) -> None:
+        """Dismiss any active HMI overlay (called on user touch)."""
+        if self.hmi_text is not None:
+            self.hmi_text = None
+            self.hmi_repeat = False
+            self.hmi_next_repeat_at = 0.0
+            self._display_changed = True
+            self._dequeue_hmi(time.time())
+
+    def _dequeue_hmi(self, now: float) -> None:
+        """Pop the next queued HMI item and start displaying it."""
+        if not self._hmi_queue:
+            return
+        item = self._hmi_queue.pop(0)
+        self.hmi_text = item["text"]
+        self.hmi_duration = item["duration"]
+        self.hmi_until = now + item["duration"]
+        self.hmi_repeat = item["repeat"]
+        self.hmi_repeat_interval = item["repeat_interval"]
+        self.hmi_next_repeat_at = 0.0
+        self._display_changed = True
+
     def _poll_hmi_request(self, now: float) -> None:
         if not self.hmi_request_file:
             return
@@ -167,10 +204,22 @@ class FaceApplication:
             duration = float(data.get("duration") or self.hmi_default_duration)
         except (TypeError, ValueError):
             duration = self.hmi_default_duration
-        self.hmi_text = text
-        self.hmi_duration = max(1.0, duration)
-        self.hmi_until = now + self.hmi_duration
-        self._display_changed = True
+        repeat_val = data.get("repeat")
+        repeat = False
+        repeat_interval = 60.0
+        if repeat_val not in (None, False, 0):
+            repeat = True
+            if isinstance(repeat_val, (int, float)) and repeat_val is not True:
+                repeat_interval = max(5.0, float(repeat_val))
+        self._hmi_queue.append({
+            "text": text,
+            "duration": max(1.0, duration),
+            "repeat": repeat,
+            "repeat_interval": repeat_interval,
+        })
+        # Start immediately only if nothing is currently showing
+        if self.hmi_text is None:
+            self._dequeue_hmi(now)
 
     def _get_hmi_font(self) -> pygame.font.Font:
         if self._hmi_font is None:
