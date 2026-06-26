@@ -4,47 +4,57 @@
 import os
 import sys
 import pygame
+
+# Add digitalface root to path so we can import the display/touch drivers
+_GAME_DIR = os.path.dirname(os.path.abspath(__file__))
+_DIGITALFACE_DIR = os.path.dirname(os.path.dirname(_GAME_DIR))
+sys.path.insert(0, _DIGITALFACE_DIR)
+
 from game import FlappyBirdGame
 
 
-def run_framebuffer_mode(fbdev="/dev/fb1"):
-    """Run game on framebuffer with fallback to SDL."""
-    os.environ["SDL_VIDEODRIVER"] = "fbcon"
-    os.environ["SDL_FBDEV"] = fbdev
-    os.environ["SDL_MOUSEDRV"] = "TSLIB"
-    os.environ["SDL_MOUSEDEV"] = "/dev/input/event1"
-    
+def run_framebuffer_mode(fbdev="/dev/fb1", rotate_180=False):
+    """Run game directly on framebuffer using the digitalface display/touch drivers."""
+    from driver.display_driver import FramebufferPresenter, TouchDriver
+
+    # Use offscreen SDL driver for keyboard events only (no display window needed)
+    os.environ["SDL_VIDEODRIVER"] = "offscreen"
+
+    pygame.font.init()
+    pygame.display.init()
+
     try:
-        pygame.init()
-        game = FlappyBirdGame(screen_width=480, screen_height=320)
-        game.run()
-    except pygame.error as e:
-        print(f"\n⚠️  Framebuffer error: {e}")
-        print("\n📌 SOLUTION: Stop digitalface first, then run the game:")
+        presenter = FramebufferPresenter(fbdev, 480, 320)
+    except OSError as e:
+        print(f"\n⚠️  Cannot open framebuffer {fbdev}: {e}")
+        print("\nMake sure digitalface is stopped first:")
         print("   sudo systemctl stop digitalface")
-        print("   /home/eric/projects/digitalface/games/flappy_bird/launch.sh")
-        print("\nOR run in SDL window mode for testing:")
-        print("   /home/eric/projects/digitalface/games/flappy_bird/launch.sh --sdl")
         sys.exit(1)
 
+    touch = TouchDriver()
+    surface = pygame.Surface((480, 320))
+    game = FlappyBirdGame(screen_width=480, screen_height=320, surface=surface, touch_driver=touch)
+    clock = pygame.time.Clock()
 
-def run_sdl_mode():
-    """Run game in SDL window (for testing)."""
-    pygame.init()
-    game = FlappyBirdGame(screen_width=480, screen_height=320)
-    game.run()
+    try:
+        while game.running:
+            game.handle_events()
+            game.update()
+            game.draw()
+            frame = pygame.transform.flip(surface, True, True) if rotate_180 else surface
+            presenter.present(frame)
+            clock.tick(60)
+    finally:
+        presenter.close()
+        touch.close()
 
 
 if __name__ == "__main__":
     import argparse
-    
+
     parser = argparse.ArgumentParser(description="Flappy Bird Game")
     parser.add_argument("--fbdev", default="/dev/fb1", help="Framebuffer device (default: /dev/fb1)")
-    parser.add_argument("--sdl", action="store_true", help="Use SDL window instead of framebuffer")
+    parser.add_argument("--rotate-180", action="store_true", help="Rotate display 180 degrees")
     args = parser.parse_args()
-    
-    if args.sdl:
-        print("🎮 Running in SDL window mode (for testing)")
-        run_sdl_mode()
-    else:
-        run_framebuffer_mode(args.fbdev)
+
+    run_framebuffer_mode(args.fbdev, rotate_180=args.rotate_180)

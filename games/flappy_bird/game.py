@@ -85,11 +85,16 @@ class Pipe:
 class FlappyBirdGame:
     """Main game class."""
     
-    def __init__(self, screen_width=480, screen_height=320):
+    def __init__(self, screen_width=480, screen_height=320, surface=None, touch_driver=None):
         self.screen_width = screen_width
         self.screen_height = screen_height
-        self.surface = pygame.display.set_mode((screen_width, screen_height))
-        pygame.display.set_caption("Flappy Bird")
+        self._use_sdl_display = (surface is None)
+        self._touch_driver = touch_driver
+        if surface is not None:
+            self.surface = surface
+        else:
+            self.surface = pygame.display.set_mode((screen_width, screen_height))
+            pygame.display.set_caption("Flappy Bird")
         
         self.clock = pygame.time.Clock()
         self.fps = 60
@@ -119,6 +124,17 @@ class FlappyBirdGame:
     
     def handle_events(self):
         """Handle pygame events."""
+        # Poll touch driver (direct evdev) if available
+        if self._touch_driver is not None:
+            if self._touch_driver.poll():
+                current_time = time.time()
+                if current_time - self.last_touch_time > self.touch_debounce:
+                    if self.game_over:
+                        self.restart()
+                    else:
+                        self.bird.jump()
+                    self.last_touch_time = current_time
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
@@ -130,8 +146,8 @@ class FlappyBirdGame:
                         self.restart()
                     else:
                         self.bird.jump()
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                # Touch screen / mouse click = jump
+            elif event.type == pygame.MOUSEBUTTONDOWN and self._touch_driver is None:
+                # Only use SDL mouse events when no touch driver is available
                 current_time = time.time()
                 if current_time - self.last_touch_time > self.touch_debounce:
                     if self.game_over:
@@ -231,7 +247,8 @@ class FlappyBirdGame:
             restart_rect = restart_text.get_rect(center=(self.screen_width // 2, self.screen_height // 2 + 50))
             self.surface.blit(restart_text, restart_rect)
         
-        pygame.display.flip()
+        if self._use_sdl_display:
+            pygame.display.flip()
     
     def restart(self):
         """Restart the game."""
