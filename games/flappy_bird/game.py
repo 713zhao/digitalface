@@ -102,6 +102,8 @@ class FlappyBirdGame:
         # Game state
         self.running = True
         self.game_over = False
+        self.game_over_at = 0.0
+        self.game_over_timeout = 60.0  # auto-exit after 60 seconds
         self.score = 0
         
         # Bird
@@ -169,6 +171,9 @@ class FlappyBirdGame:
     def update(self):
         """Update game state."""
         if self.game_over:
+            # Auto-exit after timeout
+            if self.game_over_at > 0 and (time.time() - self.game_over_at) >= self.game_over_timeout:
+                self.running = False
             return
         
         # Update bird
@@ -177,6 +182,7 @@ class FlappyBirdGame:
         # Check bird bounds (falling off screen)
         if self.bird.y > self.screen_height or self.bird.y < 0:
             self.game_over = True
+            self.game_over_at = time.time()
             return
         
         # Spawn new pipes
@@ -200,6 +206,7 @@ class FlappyBirdGame:
             for pipe_rect in pipe.get_rects():
                 if bird_rect.colliderect(pipe_rect):
                     self.game_over = True
+                    self.game_over_at = time.time()
                     return
             
             # Remove pipes off screen
@@ -246,6 +253,14 @@ class FlappyBirdGame:
             restart_text = restart_font.render("TAP TO RESTART", True, self.text_color)
             restart_rect = restart_text.get_rect(center=(self.screen_width // 2, self.screen_height // 2 + 50))
             self.surface.blit(restart_text, restart_rect)
+
+            # Show auto-exit countdown
+            if self.game_over_at > 0:
+                remaining = max(0, self.game_over_timeout - (time.time() - self.game_over_at))
+                countdown_font = pygame.font.Font(None, 20)
+                countdown_text = countdown_font.render(f"Auto-exit in {int(remaining)}s", True, (180, 180, 180))
+                countdown_rect = countdown_text.get_rect(center=(self.screen_width // 2, self.screen_height - 16))
+                self.surface.blit(countdown_text, countdown_rect)
         
         if self._use_sdl_display:
             pygame.display.flip()
@@ -257,6 +272,7 @@ class FlappyBirdGame:
         self.pipe_spawn_timer = 0
         self.score = 0
         self.game_over = False
+        self.game_over_at = 0.0
     
     def run(self):
         """Main game loop."""
