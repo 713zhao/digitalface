@@ -16,9 +16,9 @@ class Bird:
         self.width = width
         self.height = height
         self.velocity = 0
-        self.gravity = 0.6
-        self.jump_power = -12
-        self.max_fall_speed = 15
+        self.gravity = 0.4
+        self.jump_power = -10
+        self.max_fall_speed = 12
     
     def update(self):
         """Apply gravity and update position."""
@@ -49,7 +49,7 @@ class Pipe:
         self.width = 60
         self.screen_width = screen_width
         self.screen_height = screen_height
-        self.speed = 5
+        self.speed = 3
         self.passed = False
     
     def update(self):
@@ -110,7 +110,7 @@ class FlappyBirdGame:
         # Pipes
         self.pipes = []
         self.pipe_spawn_timer = 0
-        self.pipe_spawn_interval = 120  # frames
+        self.pipe_spawn_interval = 160  # frames
         
         # Touch input
         self.last_touch_time = 0
@@ -159,8 +159,8 @@ class FlappyBirdGame:
     def spawn_pipe(self):
         """Spawn a new pipe."""
         min_gap_y = 50
-        max_gap_y = self.screen_height - 100
-        gap_height = 120
+        max_gap_y = self.screen_height - 130
+        gap_height = 170
         
         gap_y = random.randint(min_gap_y, max_gap_y)
         pipe = Pipe(self.screen_width, gap_y, gap_height, self.screen_width, self.screen_height)
