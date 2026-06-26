@@ -21,9 +21,18 @@ A colorful animated digital face for Raspberry Pi OS Lite + SPI LCD.
 - Single-instance protection (prevents duplicate GUI processes)
 - Runtime face switching without app restart using helper scripts
 - Optional auto-cycle mode to switch faces periodically
+- Double-click or double-tap the screen to switch to the next face
 - Driver-level LED backlight on/off control
 - Auto LED backlight off after 10 minutes of no face change and no touch input
 - Touch input support in framebuffer mode to wake display
+- **HMI Overlay System**: Unix socket-based IPC for displaying messages, images, and alerts
+- **Protocol v2**: JSON-based message protocol with animations, priorities, and smart text scrolling
+- **Text Scrolling**: Automatic vertical scrolling (bottom to top) when text exceeds screen height
+- **Animation Support**: fade_in, fade_out, pulse, blink, typewriter, zoom_in, zoom_out effects
+- **Message Priority**: high/normal/low queue ordering
+- **Persistent Display**: Optional unlimited display duration
+- **Font Size Control**: 8-128 pixels, default 80px
+- **Selective Dismiss**: Dismiss messages by ID or clear all
 
 ## Requirements
 
@@ -131,6 +140,49 @@ Or specify interval seconds:
 ./cycle_faces_bg.sh 60
 ./stop_cycle_faces.sh
 ```
+
+## HMI Overlay System (LCD Messages)
+
+Display messages, images, and alerts on the LCD via **Protocol v2** using Unix sockets.
+
+### Quick Start
+
+Send a message from Python:
+
+```python
+import socket
+import json
+
+payload = {
+    "id": "msg-001",
+    "type": "text",
+    "text": "Hello World",
+    "duration": 10,
+    "font_size": 80,
+    "priority": "normal",
+    "animation": "none"
+}
+
+sock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+sock.sendto(json.dumps(payload).encode(), "/home/eric/projects/digitalface/.runtime/digitalface_hmi.sock")
+```
+
+### Send from Command Line
+
+Use the trigger-lcd tool from aireminder:
+
+```bash
+cd /home/eric/projects/aireminder/mcp/python
+./trigger-lcd show "Your message here" -d 10
+./trigger-lcd show "Big text" --font-size 80 -d 10
+./trigger-lcd show "With animation" --animation fade_in -d 10
+./trigger-lcd dismiss <message-id>
+./trigger-lcd dismiss-all
+```
+
+### Protocol Documentation
+
+See [PROTOCOL.md](PROTOCOL.md) for complete socket message format, field descriptions, animation types, and examples.
 
 ## Systemd Autostart (Recommended)
 
