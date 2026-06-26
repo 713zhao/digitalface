@@ -71,29 +71,17 @@ GAME_DIR = os.path.join(os.path.dirname(__file__), "games", "flappy_bird")
 
 
 def launch_game(fbdev: str) -> None:
-    """Run Flappy Bird as a subprocess; handle SIGTERM by killing the child."""
-    game_main = os.path.join(GAME_DIR, "main.py")
-    proc = subprocess.Popen([sys.executable, game_main, "--fbdev", fbdev, "--rotate-180"])
-
-    def _kill_game(sig: int, _frame: object) -> None:
-        proc.terminate()
-        proc.wait()
-
-    old_sigterm = signal.signal(signal.SIGTERM, _kill_game)
-    old_sigint = signal.signal(signal.SIGINT, _kill_game)
-    try:
-        proc.wait()
-    finally:
-        signal.signal(signal.SIGTERM, old_sigterm)
-        signal.signal(signal.SIGINT, old_sigint)
-
-    # Clear framebuffer to black so the game-over frame doesn't bleed into digitalface
+    """Replace this process with the game via exec (same PID, no subprocess race)."""
+    # Clear framebuffer to black before handing off
     try:
         with open(fbdev, "rb+") as fb:
             fb.write(b"\x00" * (WIDTH * HEIGHT * 2))
     except OSError:
         pass
-    time.sleep(0.15)  # brief pause for visual separation
+    time.sleep(0.05)
+    game_main = os.path.join(GAME_DIR, "main.py")
+    os.execv(sys.executable, [sys.executable, game_main, "--fbdev", fbdev, "--rotate-180"])
+    # Never returns — this process IS now the game
 
 
 def handle_tap_for_next_face(app: FaceApplication, now: float, last_tap_at: float) -> tuple[float, bool]:
@@ -164,70 +152,64 @@ def run_sdl_mode() -> None:
 
 
 def run_framebuffer_mode(fbdev: str) -> None:
-    while True:  # outer loop: restart display after game exits
-        driver = create_framebuffer_driver(fbdev, WIDTH, HEIGHT, rotate_180=DISPLAY_ROTATE_180)
-        touch = create_touch_driver()
-        app = FaceApplication(driver, FACE_CONTROL_FILE, default_expression="happy", pause_file=FACE_CONTROL_PAUSE_FILE, hmi_request_file=HMI_REQUEST_FILE, hmi_socket_file=HMI_SOCKET_FILE, hmi_default_duration=HMI_DEFAULT_DURATION_SECONDS)
-        clock = pygame.time.Clock()
-        last_tap_at = 0.0
-        last_touch_tap_event_at = 0.0
-        last_touch_at = time.time()
-        display_sleeping = False
-        running = True
-        game_requested = False
+    driver = create_framebuffer_driver(fbdev, WIDTH, HEIGHT, rotate_180=DISPLAY_ROTATE_180)
+    touch = create_touch_driver()
+    app = FaceApplication(driver, FACE_CONTROL_FILE, default_expression="happy", pause_file=FACE_CONTROL_PAUSE_FILE, hmi_request_file=HMI_REQUEST_FILE, hmi_socket_file=HMI_SOCKET_FILE, hmi_default_duration=HMI_DEFAULT_DURATION_SECONDS)
+    clock = pygame.time.Clock()
+    last_tap_at = 0.0
+    last_touch_tap_event_at = 0.0
+    last_touch_at = time.time()
+    display_sleeping = False
+    running = True
+    game_requested = False
 
-        def stop_handler(_sig: int, _frame: object) -> None:
-            nonlocal running
-            running = False
+    def stop_handler(_sig: int, _frame: object) -> None:
+        nonlocal running
+        running = False
 
-        signal.signal(signal.SIGINT, stop_handler)
-        signal.signal(signal.SIGTERM, stop_handler)
+    signal.signal(signal.SIGINT, stop_handler)
+    signal.signal(signal.SIGTERM, stop_handler)
 
-        try:
-            while running:
-                now = time.time()
-                touch_down = touch.poll()
-                if touch_down and (now - last_touch_tap_event_at) >= TOUCH_TAP_DEBOUNCE_SECONDS:
-                    last_touch_at = now
-                    if display_sleeping:
-                        driver.set_led_enabled(True)
-                        display_sleeping = False
-                    if app.hmi_text is not None:
-                        app.dismiss_hmi()
-                    else:
-                        last_tap_at, game_requested = handle_tap_for_next_face(app, now, last_tap_at)
-                        if game_requested:
-                            running = False
-                    last_touch_tap_event_at = now
-
-                app.update(now)
-                app.consume_display_changed()
-
-                if IDLE_TIMEOUT_SECONDS is not None and (now - last_touch_at) >= IDLE_TIMEOUT_SECONDS and not display_sleeping:
-                    driver.set_led_enabled(False)
-                    display_sleeping = True
-
-                if app.hmi_text is not None and now < app.hmi_until and display_sleeping:
+    try:
+        while running:
+            now = time.time()
+            touch_down = touch.poll()
+            if touch_down and (now - last_touch_tap_event_at) >= TOUCH_TAP_DEBOUNCE_SECONDS:
+                last_touch_at = now
+                if display_sleeping:
                     driver.set_led_enabled(True)
                     display_sleeping = False
-                    last_touch_at = now
+                if app.hmi_text is not None:
+                    app.dismiss_hmi()
+                else:
+                    last_tap_at, game_requested = handle_tap_for_next_face(app, now, last_tap_at)
+                    if game_requested:
+                        running = False
+                last_touch_tap_event_at = now
 
-                if not display_sleeping:
-                    app.render(now)
-                    driver.present()
-                clock.tick(FB_FPS)
-        finally:
-            app.close()
-            touch.close()
-            driver.close()
+            app.update(now)
+            app.consume_display_changed()
 
-        if game_requested:
-            launch_game(fbdev)
-            if not running:
-                break  # SIGTERM arrived during game → exit cleanly
-            # loop back → reinitialize display and resume digitalface
-        else:
-            break  # clean exit (SIGTERM/SIGINT)
+            if IDLE_TIMEOUT_SECONDS is not None and (now - last_touch_at) >= IDLE_TIMEOUT_SECONDS and not display_sleeping:
+                driver.set_led_enabled(False)
+                display_sleeping = True
+
+            if app.hmi_text is not None and now < app.hmi_until and display_sleeping:
+                driver.set_led_enabled(True)
+                display_sleeping = False
+                last_touch_at = now
+
+            if not display_sleeping:
+                app.render(now)
+                driver.present()
+            clock.tick(FB_FPS)
+    finally:
+        app.close()
+        touch.close()
+        driver.close()
+
+    if game_requested:
+        launch_game(fbdev)  # replaces this process via exec — never returns
 
 
 def main() -> None:

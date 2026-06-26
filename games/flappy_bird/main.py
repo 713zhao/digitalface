@@ -48,6 +48,16 @@ def run_framebuffer_mode(fbdev="/dev/fb1", rotate_180=False):
         presenter.close()
         touch.close()
 
+    # Clear screen, then exec back to digitalface (same PID — no systemd restart gap)
+    try:
+        with open(fbdev, "rb+") as fb:
+            fb.write(b"\x00" * (480 * 320 * 2))
+    except OSError:
+        pass
+    time.sleep(0.05)
+    digitalface_main = os.path.join(_DIGITALFACE_DIR, "main.py")
+    os.execv(sys.executable, [sys.executable, digitalface_main, "--force-fb", "--fbdev", fbdev])
+
 
 if __name__ == "__main__":
     import argparse
