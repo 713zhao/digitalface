@@ -71,12 +71,29 @@ GAME_DIR = os.path.join(os.path.dirname(__file__), "games", "flappy_bird")
 
 
 def launch_game(fbdev: str) -> None:
-    """Stop current fb output, run Flappy Bird, then caller restarts display."""
+    """Run Flappy Bird as a subprocess; handle SIGTERM by killing the child."""
     game_main = os.path.join(GAME_DIR, "main.py")
-    subprocess.run(
-        [sys.executable, game_main, "--fbdev", fbdev, "--rotate-180"],
-        check=False,
-    )
+    proc = subprocess.Popen([sys.executable, game_main, "--fbdev", fbdev, "--rotate-180"])
+
+    def _kill_game(sig: int, _frame: object) -> None:
+        proc.terminate()
+        proc.wait()
+
+    old_sigterm = signal.signal(signal.SIGTERM, _kill_game)
+    old_sigint = signal.signal(signal.SIGINT, _kill_game)
+    try:
+        proc.wait()
+    finally:
+        signal.signal(signal.SIGTERM, old_sigterm)
+        signal.signal(signal.SIGINT, old_sigint)
+
+    # Clear framebuffer to black so the game-over frame doesn't bleed into digitalface
+    try:
+        with open(fbdev, "rb+") as fb:
+            fb.write(b"\x00" * (WIDTH * HEIGHT * 2))
+    except OSError:
+        pass
+    time.sleep(0.15)  # brief pause for visual separation
 
 
 def handle_tap_for_next_face(app: FaceApplication, now: float, last_tap_at: float) -> tuple[float, bool]:
@@ -206,6 +223,8 @@ def run_framebuffer_mode(fbdev: str) -> None:
 
         if game_requested:
             launch_game(fbdev)
+            if not running:
+                break  # SIGTERM arrived during game → exit cleanly
             # loop back → reinitialize display and resume digitalface
         else:
             break  # clean exit (SIGTERM/SIGINT)
