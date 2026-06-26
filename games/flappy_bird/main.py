@@ -8,15 +8,24 @@ from game import FlappyBirdGame
 
 
 def run_framebuffer_mode(fbdev="/dev/fb1"):
-    """Run game on framebuffer."""
+    """Run game on framebuffer with fallback to SDL."""
     os.environ["SDL_VIDEODRIVER"] = "fbcon"
     os.environ["SDL_FBDEV"] = fbdev
     os.environ["SDL_MOUSEDRV"] = "TSLIB"
     os.environ["SDL_MOUSEDEV"] = "/dev/input/event1"
     
-    pygame.init()
-    game = FlappyBirdGame(screen_width=480, screen_height=320)
-    game.run()
+    try:
+        pygame.init()
+        game = FlappyBirdGame(screen_width=480, screen_height=320)
+        game.run()
+    except pygame.error as e:
+        print(f"\n⚠️  Framebuffer error: {e}")
+        print("\n📌 SOLUTION: Stop digitalface first, then run the game:")
+        print("   sudo systemctl stop digitalface")
+        print("   /home/eric/projects/digitalface/games/flappy_bird/launch.sh")
+        print("\nOR run in SDL window mode for testing:")
+        print("   /home/eric/projects/digitalface/games/flappy_bird/launch.sh --sdl")
+        sys.exit(1)
 
 
 def run_sdl_mode():
@@ -35,6 +44,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     if args.sdl:
+        print("🎮 Running in SDL window mode (for testing)")
         run_sdl_mode()
     else:
         run_framebuffer_mode(args.fbdev)

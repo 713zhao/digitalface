@@ -16,12 +16,32 @@ fi
 # Default framebuffer device
 FBDEV="${1:-/dev/fb1}"
 
+# Check if --sdl flag is passed
+SDL_MODE=false
+if [[ "$1" == "--sdl" ]]; then
+    SDL_MODE=true
+    FBDEV="/dev/fb1"
+fi
+
 echo "=== Flappy Bird Game ==="
-echo "Framebuffer: $FBDEV"
-echo "Controls: TAP TO JUMP (or SPACE)"
+if [[ "$SDL_MODE" == "true" ]]; then
+    echo "Mode: SDL Window (for testing)"
+    echo "Controls: SPACE TO JUMP"
+else
+    echo "Framebuffer: $FBDEV"
+    echo "Controls: TAP TO JUMP (or SPACE)"
+    echo ""
+    echo "⚠️  IMPORTANT: If you see 'fbcon not available' error:"
+    echo "   Stop digitalface first: sudo systemctl stop digitalface"
+    echo "   Then run this script again"
+fi
 echo "Exit: ESC or close window"
 echo ""
 
 # Run game
 cd "$SCRIPT_DIR"
-python3 main.py --fbdev "$FBDEV"
+if [[ "$SDL_MODE" == "true" ]]; then
+    python3 main.py --sdl
+else
+    python3 main.py --fbdev "$FBDEV"
+fi

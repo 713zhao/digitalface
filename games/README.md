@@ -17,24 +17,38 @@ Touch-screen controlled games for Raspberry Pi LCD display.
 
 ## How to Launch
 
-### Option 1: Launch Game Selector Menu
+### Option 1: Launch Game Selector Menu (Recommended)
 ```bash
 cd /home/eric/projects/digitalface/games
 ./launch_game.sh
 ```
 
-### Option 2: Launch Specific Game
+### Option 2: Launch Specific Game in SDL Mode (Testing - No Setup Needed)
 ```bash
 cd /home/eric/projects/digitalface/games
+./flappy_bird/launch.sh --sdl
+```
+✅ Works immediately - runs in SDL window without stopping digitalface
+
+### Option 3: Launch on Framebuffer (Full Screen - Requires Setup)
+```bash
+# 1. Stop digitalface to free the framebuffer
+sudo systemctl stop digitalface
+
+# 2. Run game
+cd /home/eric/projects/digitalface/games
 ./flappy_bird/launch.sh
+
+# 3. Restart digitalface when done
+sudo systemctl start digitalface
 ```
 
-### Option 3: Direct Python
+### Option 4: Direct Python
 ```bash
 cd /home/eric/projects/digitalface/games/flappy_bird
-python3 main.py                    # Use framebuffer
-python3 main.py --sdl             # Use SDL window (testing)
-python3 main.py --fbdev /dev/fb0  # Use different framebuffer
+python3 main.py --sdl                    # SDL window
+python3 main.py                          # Framebuffer (requires stopping digitalface)
+python3 main.py --fbdev /dev/fb0         # Use different framebuffer
 ```
 
 ## Controls
