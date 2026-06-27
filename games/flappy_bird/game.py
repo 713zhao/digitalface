@@ -17,7 +17,7 @@ class Bird:
         self.height = height
         self.velocity = 0
         self.gravity = 0.4
-        self.jump_power = -8
+        self.jump_power = -6
         self.max_fall_speed = 12
     
     def update(self):
@@ -130,7 +130,7 @@ class FlappyBirdGame:
     
     def _pipe_speed(self) -> float:
         """Speed increases with level."""
-        return min(3.0 + (self.level - 1) * 0.6, 7.0)
+        return min(3.6 + (self.level - 1) * 0.6, 7.0)
 
     def _pipe_gap(self) -> int:
         """Gap narrows with level (min 100px)."""
