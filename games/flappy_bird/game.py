@@ -17,7 +17,7 @@ class Bird:
         self.height = height
         self.velocity = 0
         self.gravity = 0.4
-        self.jump_power = -10
+        self.jump_power = -8
         self.max_fall_speed = 12
     
     def update(self):
@@ -105,6 +105,10 @@ class FlappyBirdGame:
         self.game_over_at = 0.0
         self.game_over_timeout = 60.0  # auto-exit after 60 seconds
         self.score = 0
+        self.level = 1
+
+        # Touch edge detection — jump only on press, not while holding
+        self._prev_touched = False
         
         # Bird
         self.bird = Bird(self.screen_width // 4, self.screen_height // 2)
@@ -116,7 +120,7 @@ class FlappyBirdGame:
         
         # Touch input
         self.last_touch_time = 0
-        self.touch_debounce = 0.1  # seconds
+        self.touch_debounce = 0.25  # seconds — prevents accidental double-jumps
         
         # Colors
         self.bg_color = (20, 30, 60)
@@ -124,11 +128,29 @@ class FlappyBirdGame:
         self.pipe_color = (0, 200, 0)
         self.text_color = (255, 255, 255)
     
+    def _pipe_speed(self) -> float:
+        """Speed increases with level."""
+        return min(3.0 + (self.level - 1) * 0.6, 7.0)
+
+    def _pipe_gap(self) -> int:
+        """Gap narrows with level (min 100px)."""
+        return max(170 - (self.level - 1) * 12, 100)
+
+    def _update_level(self) -> None:
+        """Increase level every 5 points."""
+        new_level = self.score // 5 + 1
+        if new_level > self.level:
+            self.level = new_level
+            self.pipe_spawn_interval = max(160 - (self.level - 1) * 8, 90)
+
     def handle_events(self):
         """Handle pygame events."""
-        # Poll touch driver (direct evdev) if available
+        # Poll touch driver with edge detection — jump only on finger-down, not hold
         if self._touch_driver is not None:
-            if self._touch_driver.poll():
+            touched = self._touch_driver.poll()
+            rising_edge = touched and not self._prev_touched
+            self._prev_touched = touched
+            if rising_edge:
                 current_time = time.time()
                 if current_time - self.last_touch_time > self.touch_debounce:
                     if self.game_over:
@@ -159,13 +181,14 @@ class FlappyBirdGame:
                     self.last_touch_time = current_time
     
     def spawn_pipe(self):
-        """Spawn a new pipe."""
+        """Spawn a new pipe at current level difficulty."""
         min_gap_y = 50
         max_gap_y = self.screen_height - 130
-        gap_height = 170
-        
+        gap_height = self._pipe_gap()
+
         gap_y = random.randint(min_gap_y, max_gap_y)
         pipe = Pipe(self.screen_width, gap_y, gap_height, self.screen_width, self.screen_height)
+        pipe.speed = self._pipe_speed()
         self.pipes.append(pipe)
     
     def update(self):
@@ -178,7 +201,10 @@ class FlappyBirdGame:
         
         # Update bird
         self.bird.update()
-        
+
+        # Level progression
+        self._update_level()
+
         # Check bird bounds (falling off screen)
         if self.bird.y > self.screen_height or self.bird.y < 0:
             self.game_over = True
@@ -231,6 +257,11 @@ class FlappyBirdGame:
         font = pygame.font.Font(None, 48)
         score_text = font.render(str(self.score), True, self.text_color)
         self.surface.blit(score_text, (10, 10))
+
+        # Draw level indicator
+        lvl_font = pygame.font.Font(None, 28)
+        lvl_text = lvl_font.render(f"Lv {self.level}", True, (200, 200, 100))
+        self.surface.blit(lvl_text, (self.screen_width - 60, 10))
         
         # Draw game over message
         if self.game_over:
@@ -270,9 +301,12 @@ class FlappyBirdGame:
         self.bird = Bird(self.screen_width // 4, self.screen_height // 2)
         self.pipes = []
         self.pipe_spawn_timer = 0
+        self.pipe_spawn_interval = 160
         self.score = 0
+        self.level = 1
         self.game_over = False
         self.game_over_at = 0.0
+        self._prev_touched = False
     
     def run(self):
         """Main game loop."""
