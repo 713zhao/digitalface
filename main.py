@@ -68,20 +68,8 @@ def ensure_default_face_cycle() -> None:
 
 
 GAME_DIR = os.path.join(os.path.dirname(__file__), "games", "flappy_bird")
-
-
-def launch_game(fbdev: str) -> None:
-    """Replace this process with the game via exec (same PID, no subprocess race)."""
-    # Clear framebuffer to black before handing off
-    try:
-        with open(fbdev, "rb+") as fb:
-            fb.write(b"\x00" * (WIDTH * HEIGHT * 2))
-    except OSError:
-        pass
-    time.sleep(0.05)
-    game_main = os.path.join(GAME_DIR, "main.py")
-    os.execv(sys.executable, [sys.executable, game_main, "--fbdev", fbdev, "--rotate-180"])
-    # Never returns — this process IS now the game
+sys.path.insert(0, GAME_DIR)
+from game import FlappyBirdGame  # noqa: E402  (path set above)
 
 
 def handle_tap_for_next_face(app: FaceApplication, now: float, last_tap_at: float) -> tuple[float, bool]:
@@ -152,6 +140,10 @@ def run_sdl_mode() -> None:
 
 
 def run_framebuffer_mode(fbdev: str) -> None:
+    # Enable SDL offscreen driver so keyboard events work in game mode
+    os.environ.setdefault("SDL_VIDEODRIVER", "offscreen")
+    pygame.display.init()
+
     driver = create_framebuffer_driver(fbdev, WIDTH, HEIGHT, rotate_180=DISPLAY_ROTATE_180)
     touch = create_touch_driver()
     app = FaceApplication(driver, FACE_CONTROL_FILE, default_expression="happy", pause_file=FACE_CONTROL_PAUSE_FILE, hmi_request_file=HMI_REQUEST_FILE, hmi_socket_file=HMI_SOCKET_FILE, hmi_default_duration=HMI_DEFAULT_DURATION_SECONDS)
@@ -161,7 +153,10 @@ def run_framebuffer_mode(fbdev: str) -> None:
     last_touch_at = time.time()
     display_sleeping = False
     running = True
-    game_requested = False
+
+    # Mode: "face" (default) or "game"
+    mode = "face"
+    game: FlappyBirdGame | None = None
 
     def stop_handler(_sig: int, _frame: object) -> None:
         nonlocal running
@@ -173,43 +168,69 @@ def run_framebuffer_mode(fbdev: str) -> None:
     try:
         while running:
             now = time.time()
-            touch_down = touch.poll()
-            if touch_down and (now - last_touch_tap_event_at) >= TOUCH_TAP_DEBOUNCE_SECONDS:
-                last_touch_at = now
-                if display_sleeping:
+
+            if mode == "game":
+                # ── Game mode ────────────────────────────────────────────
+                assert game is not None
+                game.handle_events()
+                game.update()
+                game.draw()
+                driver.present()
+                clock.tick(60)
+
+                if not game.running:
+                    # Game exited (ESC or 60-second timeout) → back to face
+                    game = None
+                    mode = "face"
+                    driver.surface.fill((0, 0, 0))
+                    driver.present()
+                    last_touch_at = now  # reset idle timer
+
+            else:
+                # ── Face mode ─────────────────────────────────────────────
+                touch_down = touch.poll()
+                if touch_down and (now - last_touch_tap_event_at) >= TOUCH_TAP_DEBOUNCE_SECONDS:
+                    last_touch_at = now
+                    if display_sleeping:
+                        driver.set_led_enabled(True)
+                        display_sleeping = False
+                    if app.hmi_text is not None:
+                        app.dismiss_hmi()
+                    else:
+                        last_tap_at, start_game = handle_tap_for_next_face(app, now, last_tap_at)
+                        if start_game:
+                            # Switch to game mode — share the same surface & touch driver
+                            driver.surface.fill((0, 0, 0))
+                            driver.present()
+                            game = FlappyBirdGame(
+                                screen_width=WIDTH,
+                                screen_height=HEIGHT,
+                                surface=driver.surface,
+                                touch_driver=touch,
+                            )
+                            mode = "game"
+                    last_touch_tap_event_at = now
+
+                app.update(now)
+                app.consume_display_changed()
+
+                if IDLE_TIMEOUT_SECONDS is not None and (now - last_touch_at) >= IDLE_TIMEOUT_SECONDS and not display_sleeping:
+                    driver.set_led_enabled(False)
+                    display_sleeping = True
+
+                if app.hmi_text is not None and now < app.hmi_until and display_sleeping:
                     driver.set_led_enabled(True)
                     display_sleeping = False
-                if app.hmi_text is not None:
-                    app.dismiss_hmi()
-                else:
-                    last_tap_at, game_requested = handle_tap_for_next_face(app, now, last_tap_at)
-                    if game_requested:
-                        running = False
-                last_touch_tap_event_at = now
+                    last_touch_at = now
 
-            app.update(now)
-            app.consume_display_changed()
-
-            if IDLE_TIMEOUT_SECONDS is not None and (now - last_touch_at) >= IDLE_TIMEOUT_SECONDS and not display_sleeping:
-                driver.set_led_enabled(False)
-                display_sleeping = True
-
-            if app.hmi_text is not None and now < app.hmi_until and display_sleeping:
-                driver.set_led_enabled(True)
-                display_sleeping = False
-                last_touch_at = now
-
-            if not display_sleeping:
-                app.render(now)
-                driver.present()
-            clock.tick(FB_FPS)
+                if not display_sleeping:
+                    app.render(now)
+                    driver.present()
+                clock.tick(FB_FPS)
     finally:
         app.close()
         touch.close()
         driver.close()
-
-    if game_requested:
-        launch_game(fbdev)  # replaces this process via exec — never returns
 
 
 def main() -> None:
