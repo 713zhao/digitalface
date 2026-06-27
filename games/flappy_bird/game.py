@@ -115,8 +115,9 @@ class FlappyBirdGame:
         
         # Pipes
         self.pipes = []
-        self.pipe_spawn_timer = 0
-        self.pipe_spawn_interval = 160  # frames
+        self.pipe_spawn_interval_sec = 2.5  # seconds between pipes
+        # Offset so first pipe appears at t+3s: spawn when last+interval elapsed
+        self.pipe_last_spawn_time = time.time() - self.pipe_spawn_interval_sec + 3.0
         
         # Touch input
         self.last_touch_time = 0
@@ -137,11 +138,11 @@ class FlappyBirdGame:
         return max(170 - (self.level - 1) * 12, 100)
 
     def _update_level(self) -> None:
-        """Increase level every 5 points."""
-        new_level = self.score // 5 + 1
+        """Increase level every 3 bars passed."""
+        new_level = self.score // 3 + 1
         if new_level > self.level:
             self.level = new_level
-            self.pipe_spawn_interval = max(160 - (self.level - 1) * 8, 90)
+            self.pipe_spawn_interval_sec = max(2.5 - (self.level - 1) * 0.1, 1.2)
 
     def handle_events(self):
         """Handle pygame events."""
@@ -211,11 +212,11 @@ class FlappyBirdGame:
             self.game_over_at = time.time()
             return
         
-        # Spawn new pipes
-        self.pipe_spawn_timer += 1
-        if self.pipe_spawn_timer >= self.pipe_spawn_interval:
+        # Spawn new pipes (time-based)
+        _now = time.time()
+        if _now - self.pipe_last_spawn_time >= self.pipe_spawn_interval_sec:
             self.spawn_pipe()
-            self.pipe_spawn_timer = 0
+            self.pipe_last_spawn_time = _now
         
         # Update and check collisions with pipes
         pipes_to_remove = []
@@ -253,15 +254,13 @@ class FlappyBirdGame:
         for pipe in self.pipes:
             pipe.draw(self.surface, self.pipe_color)
         
-        # Draw score
-        font = pygame.font.Font(None, 48)
-        score_text = font.render(str(self.score), True, self.text_color)
-        self.surface.blit(score_text, (10, 10))
-
-        # Draw level indicator
-        lvl_font = pygame.font.Font(None, 28)
-        lvl_text = lvl_font.render(f"Lv {self.level}", True, (200, 200, 100))
-        self.surface.blit(lvl_text, (self.screen_width - 60, 10))
+        # Draw HUD: bars passed (left) + level (right)
+        hud_font = pygame.font.Font(None, 36)
+        score_text = hud_font.render(f"Bars: {self.score}", True, self.text_color)
+        self.surface.blit(score_text, (8, 8))
+        lvl_text = hud_font.render(f"Lv {self.level}", True, (200, 200, 100))
+        lvl_rect = lvl_text.get_rect(topright=(self.screen_width - 8, 8))
+        self.surface.blit(lvl_text, lvl_rect)
         
         # Draw game over message
         if self.game_over:
@@ -276,7 +275,7 @@ class FlappyBirdGame:
             self.surface.blit(game_over_text, game_over_rect)
             
             score_font = pygame.font.Font(None, 32)
-            final_score_text = score_font.render(f"Score: {self.score}", True, self.text_color)
+            final_score_text = score_font.render(f"Bars: {self.score}  Lv {self.level}", True, self.text_color)
             score_rect = final_score_text.get_rect(center=(self.screen_width // 2, self.screen_height // 2 + 10))
             self.surface.blit(final_score_text, score_rect)
             
@@ -300,8 +299,8 @@ class FlappyBirdGame:
         """Restart the game."""
         self.bird = Bird(self.screen_width // 4, self.screen_height // 2)
         self.pipes = []
-        self.pipe_spawn_timer = 0
-        self.pipe_spawn_interval = 160
+        self.pipe_spawn_interval_sec = 2.5
+        self.pipe_last_spawn_time = time.time() - self.pipe_spawn_interval_sec + 3.0
         self.score = 0
         self.level = 1
         self.game_over = False
