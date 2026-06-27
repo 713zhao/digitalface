@@ -49,12 +49,12 @@ class Pipe:
         self.width = 60
         self.screen_width = screen_width
         self.screen_height = screen_height
-        self.speed = 3
+        self.speed = 180  # px/sec default
         self.passed = False
     
-    def update(self):
+    def update(self, dt: float = 1/60):
         """Move pipe left."""
-        self.x -= self.speed
+        self.x -= self.speed * dt
     
     def draw(self, surface, color=(0, 200, 0)):
         """Draw pipe (top and bottom sections)."""
@@ -115,9 +115,12 @@ class FlappyBirdGame:
         
         # Pipes
         self.pipes = []
-        self.pipe_spawn_interval_sec = 2.5  # seconds between pipes
-        # Offset so first pipe appears at t+3s: spawn when last+interval elapsed
+        self.pipe_spawn_interval_sec = 3.0  # seconds between pipes
+        # Offset so first pipe appears at t+3s
         self.pipe_last_spawn_time = time.time() - self.pipe_spawn_interval_sec + 3.0
+
+        # Delta-time tracker for frame-rate-independent pipe movement
+        self._last_update_time = time.time()
         
         # Touch input
         self.last_touch_time = 0
@@ -130,8 +133,8 @@ class FlappyBirdGame:
         self.text_color = (255, 255, 255)
     
     def _pipe_speed(self) -> float:
-        """Speed increases with level."""
-        return min(3.6 + (self.level - 1) * 0.6, 7.0)
+        """Speed increases with level, in px/sec (frame-rate independent)."""
+        return min(216.0 + (self.level - 1) * 36.0, 420.0)
 
     def _pipe_gap(self) -> int:
         """Gap narrows with level (min 100px)."""
@@ -142,7 +145,9 @@ class FlappyBirdGame:
         new_level = self.score // 3 + 1
         if new_level > self.level:
             self.level = new_level
-            self.pipe_spawn_interval_sec = max(2.5 - (self.level - 1) * 0.1, 1.2)
+            self.pipe_spawn_interval_sec = max(3.0 - (self.level - 1) * 0.15, 1.5)
+            # Prevent double-spawn: after shortening interval, wait a full interval
+            self.pipe_last_spawn_time = time.time()
 
     def handle_events(self):
         """Handle pygame events."""
@@ -183,9 +188,9 @@ class FlappyBirdGame:
     
     def spawn_pipe(self):
         """Spawn a new pipe at current level difficulty."""
-        min_gap_y = 50
-        max_gap_y = self.screen_height - 130
-        gap_height = self._pipe_gap()
+        gap_height = self._pipe_gap()  # compute first so max_gap_y can use it
+        min_gap_y = 30
+        max_gap_y = self.screen_height - gap_height - 30  # ensure full gap is visible
 
         gap_y = random.randint(min_gap_y, max_gap_y)
         pipe = Pipe(self.screen_width, gap_y, gap_height, self.screen_width, self.screen_height)
@@ -194,6 +199,10 @@ class FlappyBirdGame:
     
     def update(self):
         """Update game state."""
+        now = time.time()
+        dt = min(now - self._last_update_time, 0.05)  # cap at 50ms to avoid jumps
+        self._last_update_time = now
+
         if self.game_over:
             # Auto-exit after timeout
             if self.game_over_at > 0 and (time.time() - self.game_over_at) >= self.game_over_timeout:
@@ -221,7 +230,7 @@ class FlappyBirdGame:
         # Update and check collisions with pipes
         pipes_to_remove = []
         for pipe in self.pipes:
-            pipe.update()
+            pipe.update(dt)
             
             # Check if bird passed pipe (score point)
             if not pipe.passed and pipe.x + pipe.width < self.bird.x:
@@ -299,13 +308,14 @@ class FlappyBirdGame:
         """Restart the game."""
         self.bird = Bird(self.screen_width // 4, self.screen_height // 2)
         self.pipes = []
-        self.pipe_spawn_interval_sec = 2.5
+        self.pipe_spawn_interval_sec = 3.0
         self.pipe_last_spawn_time = time.time() - self.pipe_spawn_interval_sec + 3.0
         self.score = 0
         self.level = 1
         self.game_over = False
         self.game_over_at = 0.0
         self._prev_touched = False
+        self._last_update_time = time.time()
     
     def run(self):
         """Main game loop."""
