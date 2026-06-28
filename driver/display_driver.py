@@ -187,6 +187,8 @@ class TouchDriver:
     def __init__(self, event_paths: list[str] | None = None) -> None:
         self._fds: list[int] = []
         self.event_paths = event_paths if event_paths is not None else self._autodetect_touch_events()
+        self._last_x: int = -1
+        self._last_y: int = -1
 
         for path in self.event_paths:
             try:
@@ -237,8 +239,20 @@ class TouchDriver:
                     touched = True
                 elif ev_type == self.EV_ABS and code == self.ABS_PRESSURE and value > 0:
                     touched = True
+                elif ev_type == self.EV_ABS and code == self.ABS_X:
+                    self._last_x = value
+                elif ev_type == self.EV_ABS and code == self.ABS_Y:
+                    self._last_y = value
 
         return touched
+
+    def poll_xy(self) -> tuple[bool, int, int]:
+        """Poll touch state and return (pressed, raw_x, raw_y).
+        raw_x/y are -1 until the first touch event is received.
+        Use touch_to_screen() to convert raw coords to screen pixels.
+        """
+        pressed = self.poll()
+        return pressed, self._last_x, self._last_y
 
     def close(self) -> None:
         for fd in self._fds:
@@ -311,6 +325,32 @@ class FramebufferPresenter:
                 changed = True
         self.led_enabled = enabled
         return changed
+
+
+def touch_to_screen(
+    raw_x: int, raw_y: int, w: int, h: int, rotate_180: bool = True
+) -> tuple[int, int]:
+    """Map ADS7846/XPT2046 raw touch coordinates to screen pixels.
+
+    Calibration env vars (all optional):
+      DIGITALFACE_TOUCH_X_MIN / X_MAX  — raw X range (default 200 / 3900)
+      DIGITALFACE_TOUCH_Y_MIN / Y_MAX  — raw Y range (default 200 / 3900)
+      DIGITALFACE_TOUCH_SWAP_XY        — set to 1 if axes are swapped
+    """
+    if raw_x < 0 or raw_y < 0:
+        return w // 2, h // 2
+    if os.environ.get("DIGITALFACE_TOUCH_SWAP_XY", "0").strip() in ("1", "true"):
+        raw_x, raw_y = raw_y, raw_x
+    x_min = int(os.environ.get("DIGITALFACE_TOUCH_X_MIN", "200"))
+    x_max = int(os.environ.get("DIGITALFACE_TOUCH_X_MAX", "3900"))
+    y_min = int(os.environ.get("DIGITALFACE_TOUCH_Y_MIN", "200"))
+    y_max = int(os.environ.get("DIGITALFACE_TOUCH_Y_MAX", "3900"))
+    sx = (raw_x - x_min) / max(x_max - x_min, 1) * w
+    sy = (raw_y - y_min) / max(y_max - y_min, 1) * h
+    if rotate_180:
+        sx = w - 1 - sx
+        sy = h - 1 - sy
+    return int(max(0, min(w - 1, sx))), int(max(0, min(h - 1, sy)))
 
 
 class SDLPresenter:

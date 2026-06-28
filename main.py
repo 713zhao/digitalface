@@ -5,7 +5,6 @@ import fcntl
 import os
 import signal
 import subprocess
-import sys
 import time
 
 import pygame
@@ -67,9 +66,36 @@ def ensure_default_face_cycle() -> None:
         return
 
 
-GAME_DIR = os.path.join(os.path.dirname(__file__), "games", "flappy_bird")
-sys.path.insert(0, GAME_DIR)
-from game import FlappyBirdGame  # noqa: E402  (path set above)
+import importlib.util as _ilu
+
+
+def _load_game_module(rel_path: str, module_name: str):
+    path = os.path.join(os.path.dirname(__file__), rel_path)
+    spec = _ilu.spec_from_file_location(module_name, path)
+    mod = _ilu.module_from_spec(spec)  # type: ignore[arg-type]
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    return mod
+
+
+FlappyBirdGame = _load_game_module("games/flappy_bird/game.py",   "flappy_game").FlappyBirdGame
+GameMenu       = _load_game_module("games/menu.py",               "games_menu").GameMenu
+SnakeGame      = _load_game_module("games/snake/snake.py",        "snake_game").SnakeGame
+BreakoutGame   = _load_game_module("games/breakout/breakout.py",  "breakout_game").BreakoutGame
+
+
+def _create_game(key: str, driver, touch):
+    kwargs = dict(
+        screen_width=WIDTH,
+        screen_height=HEIGHT,
+        surface=driver.surface,
+        touch_driver=touch,
+        driver=driver,
+    )
+    if key == "snake":
+        return SnakeGame(**kwargs)
+    if key == "breakout":
+        return BreakoutGame(**kwargs)
+    return FlappyBirdGame(**kwargs)
 
 
 def handle_tap_for_next_face(app: FaceApplication, now: float, last_tap_at: float) -> tuple[float, bool]:
@@ -154,9 +180,10 @@ def run_framebuffer_mode(fbdev: str) -> None:
     display_sleeping = False
     running = True
 
-    # Mode: "face" (default) or "game"
+    # Mode: "face" (default), "menu", or "game"
     mode = "face"
-    game: FlappyBirdGame | None = None
+    game = None
+    menu = None
 
     def stop_handler(_sig: int, _frame: object) -> None:
         nonlocal running
@@ -179,12 +206,32 @@ def run_framebuffer_mode(fbdev: str) -> None:
                 clock.tick(60)
 
                 if not game.running:
-                    # Game exited (ESC or 60-second timeout) → back to face
+                    # Game exited → back to face mode
                     game = None
                     mode = "face"
                     driver.surface.fill((0, 0, 0))
                     driver.present()
                     last_touch_at = now  # reset idle timer
+
+            elif mode == "menu":
+                # ── Menu mode ────────────────────────────────────────────
+                assert menu is not None
+                menu.handle_events()
+                if not menu.draw():
+                    driver.present()
+                clock.tick(30)
+
+                if not menu.running:
+                    chosen = menu.selected
+                    menu = None
+                    driver.surface.fill((0, 0, 0))
+                    driver.present()
+                    if chosen:
+                        game = _create_game(chosen, driver, touch)
+                        mode = "game"
+                    else:
+                        mode = "face"
+                    last_touch_at = now
 
             else:
                 # ── Face mode ─────────────────────────────────────────────
@@ -199,17 +246,17 @@ def run_framebuffer_mode(fbdev: str) -> None:
                     else:
                         last_tap_at, start_game = handle_tap_for_next_face(app, now, last_tap_at)
                         if start_game:
-                            # Switch to game mode — share the same surface & touch driver
+                            # Double-tap → show game selection menu
                             driver.surface.fill((0, 0, 0))
                             driver.present()
-                            game = FlappyBirdGame(
+                            menu = GameMenu(
                                 screen_width=WIDTH,
                                 screen_height=HEIGHT,
                                 surface=driver.surface,
                                 touch_driver=touch,
                                 driver=driver,
                             )
-                            mode = "game"
+                            mode = "menu"
                     last_touch_tap_event_at = now
 
                 app.update(now)
