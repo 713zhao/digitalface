@@ -150,7 +150,7 @@ class SnakeGame:
 
         sx, sy = _to_screen(rx, ry, self.screen_width, self.screen_height, self._rotate_180)
         # Status bar back button (top-left 40px)
-        if sy < _STATUS_BAR_H and sx < 40:
+        if sy < _STATUS_BAR_H and sx < 50:
             self.back_to_menu = True
             self.running = False
             return
@@ -278,12 +278,15 @@ class SnakeGame:
 
     def _draw_status(self) -> None:
         self._status_view.fill((15, 15, 35))
-        # Back-to-menu hamburger button (tap anywhere in left 40px of status bar)
-        for i in range(3):
-            pygame.draw.rect(self._status_view, (140, 140, 190), (7, 8 + i * 7, 18, 3))
+        # Back-to-menu button — visible coloured box on left
+        pygame.draw.rect(self._status_view, (60, 60, 130), (2, 3, 46, 29), border_radius=4)
+        pygame.draw.rect(self._status_view, (120, 120, 220), (2, 3, 46, 29), 2, border_radius=4)
+        btn_font = pygame.font.Font(None, 20)
+        btn_txt = btn_font.render("\u25c4MENU", True, (200, 200, 255))
+        self._status_view.blit(btn_txt, btn_txt.get_rect(center=(25, 17)))
         font = pygame.font.Font(None, 30)
         s = font.render(f"Length: {len(self.snake)}", True, (230, 230, 230))
-        self._status_view.blit(s, (44, 6))
+        self._status_view.blit(s, (56, 6))
         r = font.render(f"Food: {self.score}", True, (255, 120, 120))
         self._status_view.blit(r, r.get_rect(topright=(self.screen_width - 8, 6)))
         spd = pygame.font.Font(None, 20)
