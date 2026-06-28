@@ -20,11 +20,15 @@ FB_FPS = 20
 IDLE_TIMEOUT_SECONDS = 10 * 60
 DEFAULT_CYCLE_INTERVAL_SECONDS = 6
 DISPLAY_ROTATE_180 = True
-# Touch rotate_180 is independent of display rotation.
-# For XPT2046 displays where raw values are naturally inverted
-# (physical top-left → raw high values), set this to False so
-# the touch origin aligns with the visual origin after display rotation.
-TOUCH_ROTATE_180 = False
+# Touch calibration for ADS7846/XPT2046 on this RPi 3.5" LCD.
+# Measured raw corner values: physical top-left≈(400,3685), bottom-right≈(3700,437)
+# ABS_Y is INVERTED on this display (high value at physical top, low at bottom).
+# These are used as os.environ defaults so the service env can still override.
+TOUCH_ROTATE_180 = True
+TOUCH_X_MIN = 400
+TOUCH_X_MAX = 3700
+TOUCH_Y_MIN = 3685   # inverted: high raw value = physical top
+TOUCH_Y_MAX = 437    # inverted: low raw value  = physical bottom
 DOUBLE_TAP_WINDOW_SECONDS = 0.70
 TOUCH_TAP_DEBOUNCE_SECONDS = 0.08
 DOUBLE_TAP_CYCLE_PAUSE_SECONDS = 20.0
@@ -174,6 +178,11 @@ def run_sdl_mode() -> None:
 def run_framebuffer_mode(fbdev: str) -> None:
     # Enable SDL offscreen driver so keyboard events work in game mode
     os.environ.setdefault("SDL_VIDEODRIVER", "offscreen")
+    # Apply touch calibration defaults (service env vars take priority)
+    os.environ.setdefault("DIGITALFACE_TOUCH_X_MIN", str(TOUCH_X_MIN))
+    os.environ.setdefault("DIGITALFACE_TOUCH_X_MAX", str(TOUCH_X_MAX))
+    os.environ.setdefault("DIGITALFACE_TOUCH_Y_MIN", str(TOUCH_Y_MIN))
+    os.environ.setdefault("DIGITALFACE_TOUCH_Y_MAX", str(TOUCH_Y_MAX))
     pygame.display.init()
 
     driver = create_framebuffer_driver(fbdev, WIDTH, HEIGHT, rotate_180=DISPLAY_ROTATE_180)
