@@ -9,6 +9,12 @@ import struct
 import subprocess
 import pygame
 
+try:
+    import numpy as np
+    _HAS_NUMPY = True
+except ImportError:
+    _HAS_NUMPY = False
+
 
 class BacklightController:
     def __init__(self, devices: list[str] | None = None) -> None:
@@ -257,20 +263,35 @@ class FramebufferPresenter:
         self.led_enabled = True
 
     def present(self, surface: pygame.Surface) -> None:
-        rgb = pygame.image.tostring(surface, "RGB")
-        src = memoryview(rgb)
-        dst = self.frame
-        j = 0
-        for i in range(0, len(src), 3):
-            r = src[i]
-            g = src[i + 1]
-            b = src[i + 2]
-            val = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
-            dst[j] = val & 0xFF
-            dst[j + 1] = (val >> 8) & 0xFF
-            j += 2
-        os.lseek(self.fd, 0, os.SEEK_SET)
-        os.write(self.fd, dst)
+        self.present_rows(surface, 0, self.height)
+
+    def present_rows(self, surface: pygame.Surface, y_start: int, y_end: int) -> None:
+        """Write only rows y_start..y_end (exclusive) to the framebuffer."""
+        h = y_end - y_start
+        if h <= 0:
+            return
+        if y_start == 0 and y_end == self.height:
+            rgb = pygame.image.tostring(surface, "RGB")
+        else:
+            rgb = pygame.image.tostring(surface.subsurface((0, y_start, self.width, h)), "RGB")
+        if _HAS_NUMPY:
+            arr = np.frombuffer(rgb, dtype=np.uint8).reshape(-1, 3)
+            r = arr[:, 0].astype(np.uint16)
+            g = arr[:, 1].astype(np.uint16)
+            b = arr[:, 2].astype(np.uint16)
+            data = (((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)).astype('<u2').tobytes()
+        else:
+            src = memoryview(rgb)
+            dst = bytearray(h * self.width * 2)
+            j = 0
+            for i in range(0, len(src), 3):
+                val = ((src[i] & 0xF8) << 8) | ((src[i+1] & 0xFC) << 3) | (src[i+2] >> 3)
+                dst[j] = val & 0xFF
+                dst[j+1] = (val >> 8) & 0xFF
+                j += 2
+            data = bytes(dst)
+        os.lseek(self.fd, y_start * self.width * 2, os.SEEK_SET)
+        os.write(self.fd, data)
 
     def close(self) -> None:
         os.close(self.fd)
@@ -347,6 +368,19 @@ class DisplayDriver:
             self.presenter.present(pygame.transform.flip(self.surface, True, True))
             return
         self.presenter.present(self.surface)
+
+    def present_rows(self, y_start: int, y_end: int) -> None:
+        """Write only rows y_start..y_end (exclusive), handling 180° rotation."""
+        if not hasattr(self.presenter, "present_rows"):
+            self.present()
+            return
+        if self.rotate_180:
+            # After flip: original row y → physical row (height-1-y)
+            # original rows y_start..y_end → physical rows (height-y_end)..(height-y_start)
+            flipped = pygame.transform.flip(self.surface, True, True)
+            self.presenter.present_rows(flipped, self.height - y_end, self.height - y_start)
+        else:
+            self.presenter.present_rows(self.surface, y_start, y_end)
 
     def set_led_enabled(self, enabled: bool) -> bool:
         changed = False

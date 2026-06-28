@@ -174,8 +174,8 @@ def run_framebuffer_mode(fbdev: str) -> None:
                 assert game is not None
                 game.handle_events()
                 game.update()
-                game.draw()
-                driver.present()
+                if not game.draw():  # game.draw() returns True if it handled present
+                    driver.present()
                 clock.tick(60)
 
                 if not game.running:
@@ -207,6 +207,7 @@ def run_framebuffer_mode(fbdev: str) -> None:
                                 screen_height=HEIGHT,
                                 surface=driver.surface,
                                 touch_driver=touch,
+                                driver=driver,
                             )
                             mode = "game"
                     last_touch_tap_event_at = now

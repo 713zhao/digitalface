@@ -6,6 +6,38 @@ import random
 import time
 import pygame
 
+_STATUS_BAR_H = 36  # pixels reserved at top for status HUD
+
+
+def _draw_dino(surface: pygame.Surface, cx: int, cy: int, color=(100, 200, 80)) -> None:
+    """Draw a pixel-art T-Rex dinosaur centered at (cx, cy) in game coordinates."""
+    e = (20, 20, 20)     # eye dark
+    w = (255, 255, 255)  # eye shine
+    # Tail tip + tail
+    pygame.draw.rect(surface, color, (cx - 14, cy, 3, 2))
+    pygame.draw.rect(surface, color, (cx - 12, cy - 1, 5, 3))
+    # Body
+    pygame.draw.rect(surface, color, (cx - 7, cy - 5, 14, 9))
+    # Back spine bump
+    pygame.draw.rect(surface, color, (cx - 5, cy - 8, 4, 3))
+    # Neck
+    pygame.draw.rect(surface, color, (cx + 4, cy - 8, 4, 5))
+    # Head
+    pygame.draw.rect(surface, color, (cx + 2, cy - 12, 8, 7))
+    # Snout / lower jaw
+    pygame.draw.rect(surface, color, (cx + 6, cy - 7, 5, 4))
+    # Eye
+    pygame.draw.rect(surface, e, (cx + 7, cy - 11, 2, 2))
+    pygame.draw.rect(surface, w, (cx + 8, cy - 11, 1, 1))
+    # Arm stub
+    pygame.draw.rect(surface, color, (cx + 8, cy - 2, 3, 2))
+    # Front leg + foot
+    pygame.draw.rect(surface, color, (cx - 2, cy + 4, 4, 6))
+    pygame.draw.rect(surface, color, (cx - 3, cy + 9, 5, 2))
+    # Back leg + foot
+    pygame.draw.rect(surface, color, (cx + 3, cy + 4, 4, 6))
+    pygame.draw.rect(surface, color, (cx + 2, cy + 9, 6, 2))
+
 
 class Bird:
     """Player bird sprite."""
@@ -85,53 +117,104 @@ class Pipe:
 class FlappyBirdGame:
     """Main game class."""
     
-    def __init__(self, screen_width=480, screen_height=320, surface=None, touch_driver=None):
+    def __init__(self, screen_width=480, screen_height=320, surface=None, touch_driver=None,
+                 character="dino", driver=None):
         self.screen_width = screen_width
         self.screen_height = screen_height
-        self._use_sdl_display = (surface is None)
+        self.game_h = screen_height - _STATUS_BAR_H  # game-area height
+        self.character = character
+        self._driver = driver
+        self._use_sdl_display = (surface is None and driver is None)
         self._touch_driver = touch_driver
         if surface is not None:
             self.surface = surface
         else:
             self.surface = pygame.display.set_mode((screen_width, screen_height))
             pygame.display.set_caption("Flappy Bird")
-        
+
+        # Subsurface views into self.surface (drawing here modifies self.surface in-place)
+        self._status_view = self.surface.subsurface((0, 0, screen_width, _STATUS_BAR_H))
+        self._game_view = self.surface.subsurface((0, _STATUS_BAR_H, screen_width, self.game_h))
+
+        # Pre-render static background once — reused every frame
+        self._bg_surface = pygame.Surface((screen_width, self.game_h))
+        self._render_bg()
+
         self.clock = pygame.time.Clock()
         self.fps = 60
-        
+
         # Game state
         self.running = True
         self.game_over = False
         self.game_over_at = 0.0
-        self.game_over_timeout = 60.0  # auto-exit after 60 seconds
+        self.game_over_timeout = 60.0
         self.score = 0
         self.level = 1
 
         # Touch edge detection — jump only on press, not while holding
         self._prev_touched = False
-        
-        # Bird
-        self.bird = Bird(self.screen_width // 4, self.screen_height // 2)
-        
+
+        # Bird (coordinates are in game-area space: 0..game_h)
+        self.bird = Bird(screen_width // 4, self.game_h // 2)
+
         # Pipes
         self.pipes = []
-        self.pipe_spawn_interval_sec = 3.0  # seconds between pipes
-        # Offset so first pipe appears at t+3s
+        self.pipe_spawn_interval_sec = 3.0
         self.pipe_last_spawn_time = time.time() - self.pipe_spawn_interval_sec + 3.0
 
         # Delta-time tracker for frame-rate-independent pipe movement
         self._last_update_time = time.time()
-        
+
         # Touch input
         self.last_touch_time = 0
-        self.touch_debounce = 0.25  # seconds — prevents accidental double-jumps
-        
+        self.touch_debounce = 0.25
+
+        # Status bar dirty tracking (only repainted when score/level changes)
+        self._status_dirty = True
+        self._last_status_score = -1
+        self._last_status_level = -1
+
         # Colors
-        self.bg_color = (20, 30, 60)
         self.bird_color = (255, 255, 100)
-        self.pipe_color = (0, 200, 0)
+        self.pipe_color = (0, 180, 0)
         self.text_color = (255, 255, 255)
     
+    def _render_bg(self) -> None:
+        """Pre-render gradient sky + ground strip into _bg_surface (called once)."""
+        w, h = self.screen_width, self.game_h
+        for y in range(h):
+            t = y / h
+            pygame.draw.line(self._bg_surface,
+                             (int(20 + t * 8), int(55 + t * 25), int(130 - t * 55)),
+                             (0, y), (w - 1, y))
+        pygame.draw.rect(self._bg_surface, (80, 60, 40), (0, h - 4, w, 4))
+
+    def _draw_status_bar(self) -> None:
+        """Paint the HUD: score (left), speed arrows (centre), level (right)."""
+        self._status_view.fill((15, 15, 35))
+        font = pygame.font.Font(None, 30)
+        # Score
+        s = font.render(f"Bars: {self.score}", True, (230, 230, 230))
+        self._status_view.blit(s, (8, 6))
+        # Level
+        l_surf = font.render(f"Lv {self.level}", True, (200, 200, 100))
+        self._status_view.blit(l_surf, l_surf.get_rect(topright=(self.screen_width - 8, 6)))
+        # Speed arrows (1 per level, max 5, colour shifts red as it speeds up)
+        n = min(self.level, 5)
+        af = pygame.font.Font(None, 22)
+        a = af.render("\u25b6" * n, True, (min(80 + n * 35, 255), max(200 - n * 20, 80), 80))
+        self._status_view.blit(a, a.get_rect(center=(self.screen_width // 2, _STATUS_BAR_H // 2)))
+        # Separator line
+        pygame.draw.line(self._status_view, (50, 50, 80),
+                         (0, _STATUS_BAR_H - 1), (self.screen_width - 1, _STATUS_BAR_H - 1))
+
+    def _draw_character(self, surface: pygame.Surface, cx: int, cy: int) -> None:
+        """Draw the player character at (cx, cy) in game-area coordinates."""
+        if self.character == "dino":
+            _draw_dino(surface, cx, cy)
+        else:
+            pygame.draw.circle(surface, self.bird_color, (cx, cy), self.bird.width // 2)
+
     def _pipe_speed(self) -> float:
         """Speed increases with level, in px/sec (frame-rate independent)."""
         return min(216.0 + (self.level - 1) * 36.0, 420.0)
@@ -190,10 +273,10 @@ class FlappyBirdGame:
         """Spawn a new pipe at current level difficulty."""
         gap_height = self._pipe_gap()  # compute first so max_gap_y can use it
         min_gap_y = 30
-        max_gap_y = self.screen_height - gap_height - 30  # ensure full gap is visible
+        max_gap_y = self.game_h - gap_height - 30  # ensure full gap visible in game area
 
         gap_y = random.randint(min_gap_y, max_gap_y)
-        pipe = Pipe(self.screen_width, gap_y, gap_height, self.screen_width, self.screen_height)
+        pipe = Pipe(self.screen_width, gap_y, gap_height, self.screen_width, self.game_h)
         pipe.speed = self._pipe_speed()
         self.pipes.append(pipe)
     
@@ -216,7 +299,7 @@ class FlappyBirdGame:
         self._update_level()
 
         # Check bird bounds (falling off screen)
-        if self.bird.y > self.screen_height or self.bird.y < 0:
+        if self.bird.y > self.game_h or self.bird.y < 0:
             self.game_over = True
             self.game_over_at = time.time()
             return
@@ -252,61 +335,60 @@ class FlappyBirdGame:
         for pipe in pipes_to_remove:
             self.pipes.remove(pipe)
     
-    def draw(self):
-        """Draw game state."""
-        self.surface.fill(self.bg_color)
-        
-        # Draw bird
-        self.bird.draw(self.surface, self.bird_color)
-        
-        # Draw pipes
-        for pipe in self.pipes:
-            pipe.draw(self.surface, self.pipe_color)
-        
-        # Draw HUD: bars passed (left) + level (right)
-        hud_font = pygame.font.Font(None, 36)
-        score_text = hud_font.render(f"Bars: {self.score}", True, self.text_color)
-        self.surface.blit(score_text, (8, 8))
-        lvl_text = hud_font.render(f"Lv {self.level}", True, (200, 200, 100))
-        lvl_rect = lvl_text.get_rect(topright=(self.screen_width - 8, 8))
-        self.surface.blit(lvl_text, lvl_rect)
-        
-        # Draw game over message
-        if self.game_over:
-            overlay = pygame.Surface((self.screen_width, self.screen_height))
-            overlay.set_alpha(200)
-            overlay.fill((0, 0, 0))
-            self.surface.blit(overlay, (0, 0))
-            
-            game_over_font = pygame.font.Font(None, 40)
-            game_over_text = game_over_font.render("GAME OVER", True, (255, 0, 0))
-            game_over_rect = game_over_text.get_rect(center=(self.screen_width // 2, self.screen_height // 2 - 40))
-            self.surface.blit(game_over_text, game_over_rect)
-            
-            score_font = pygame.font.Font(None, 32)
-            final_score_text = score_font.render(f"Bars: {self.score}  Lv {self.level}", True, self.text_color)
-            score_rect = final_score_text.get_rect(center=(self.screen_width // 2, self.screen_height // 2 + 10))
-            self.surface.blit(final_score_text, score_rect)
-            
-            restart_font = pygame.font.Font(None, 24)
-            restart_text = restart_font.render("TAP TO RESTART", True, self.text_color)
-            restart_rect = restart_text.get_rect(center=(self.screen_width // 2, self.screen_height // 2 + 50))
-            self.surface.blit(restart_text, restart_rect)
+    def draw(self) -> bool:
+        """Draw game state. Returns True if present was handled internally."""
+        # Status bar — only repaint when score/level changes
+        if self.score != self._last_status_score or self.level != self._last_status_level:
+            self._draw_status_bar()
+            self._last_status_score = self.score
+            self._last_status_level = self.level
+            self._status_dirty = True
 
-            # Show auto-exit countdown
+        # Game area — blit pre-rendered background, then game objects
+        self._game_view.blit(self._bg_surface, (0, 0))
+        for pipe in self.pipes:
+            pipe.draw(self._game_view, self.pipe_color)
+        self._draw_character(self._game_view, int(self.bird.x), int(self.bird.y))
+
+        # Game over overlay
+        if self.game_over:
+            overlay = pygame.Surface((self.screen_width, self.game_h))
+            overlay.set_alpha(180)
+            overlay.fill((0, 0, 0))
+            self._game_view.blit(overlay, (0, 0))
+
+            font_big = pygame.font.Font(None, 40)
+            go = font_big.render("GAME OVER", True, (255, 80, 80))
+            self._game_view.blit(go, go.get_rect(center=(self.screen_width // 2, self.game_h // 2 - 30)))
+
+            font_med = pygame.font.Font(None, 32)
+            sc = font_med.render(f"Bars: {self.score}  Lv {self.level}", True, self.text_color)
+            self._game_view.blit(sc, sc.get_rect(center=(self.screen_width // 2, self.game_h // 2 + 10)))
+
+            font_sm = pygame.font.Font(None, 24)
+            rt = font_sm.render("TAP TO RESTART", True, (200, 200, 200))
+            self._game_view.blit(rt, rt.get_rect(center=(self.screen_width // 2, self.game_h // 2 + 45)))
+
             if self.game_over_at > 0:
                 remaining = max(0, self.game_over_timeout - (time.time() - self.game_over_at))
-                countdown_font = pygame.font.Font(None, 20)
-                countdown_text = countdown_font.render(f"Auto-exit in {int(remaining)}s", True, (180, 180, 180))
-                countdown_rect = countdown_text.get_rect(center=(self.screen_width // 2, self.screen_height - 16))
-                self.surface.blit(countdown_text, countdown_rect)
-        
+                cd = font_sm.render(f"Auto-exit in {int(remaining)}s", True, (150, 150, 150))
+                self._game_view.blit(cd, cd.get_rect(center=(self.screen_width // 2, self.game_h - 16)))
+
+        # Present
+        if self._driver is not None:
+            if self._status_dirty:
+                self._driver.present_rows(0, _STATUS_BAR_H)
+                self._status_dirty = False
+            self._driver.present_rows(_STATUS_BAR_H, self.screen_height)
+            return True
         if self._use_sdl_display:
             pygame.display.flip()
+            return True
+        return False  # caller must present
     
     def restart(self):
         """Restart the game."""
-        self.bird = Bird(self.screen_width // 4, self.screen_height // 2)
+        self.bird = Bird(self.screen_width // 4, self.game_h // 2)
         self.pipes = []
         self.pipe_spawn_interval_sec = 3.0
         self.pipe_last_spawn_time = time.time() - self.pipe_spawn_interval_sec + 3.0
@@ -316,6 +398,9 @@ class FlappyBirdGame:
         self.game_over_at = 0.0
         self._prev_touched = False
         self._last_update_time = time.time()
+        self._status_dirty = True
+        self._last_status_score = -1
+        self._last_status_level = -1
     
     def run(self):
         """Main game loop."""
