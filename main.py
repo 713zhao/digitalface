@@ -21,14 +21,15 @@ IDLE_TIMEOUT_SECONDS = 10 * 60
 DEFAULT_CYCLE_INTERVAL_SECONDS = 6
 DISPLAY_ROTATE_180 = True
 # Touch calibration for ADS7846/XPT2046 on this RPi 3.5" LCD.
-# Measured raw corner values: physical top-left≈(400,3685), bottom-right≈(3700,437)
+# Measured interactively 2026-06-28: corners (TL/TR/BL/BR) gave:
+#   TL=(413,3562)  TR=(3721,3596)  BL=(307,324)  BR=(3819,368)
 # ABS_Y is INVERTED on this display (high value at physical top, low at bottom).
 # These are used as os.environ defaults so the service env can still override.
 TOUCH_ROTATE_180 = True
-TOUCH_X_MIN = 400
-TOUCH_X_MAX = 3700
-TOUCH_Y_MIN = 3685   # inverted: high raw value = physical top
-TOUCH_Y_MAX = 437    # inverted: low raw value  = physical bottom
+TOUCH_X_MIN = 307
+TOUCH_X_MAX = 3819
+TOUCH_Y_MIN = 3579   # inverted: high raw value = physical top
+TOUCH_Y_MAX = 346    # inverted: low raw value  = physical bottom
 DOUBLE_TAP_WINDOW_SECONDS = 0.70
 TOUCH_TAP_DEBOUNCE_SECONDS = 0.08
 DOUBLE_TAP_CYCLE_PAUSE_SECONDS = 20.0
