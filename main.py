@@ -26,15 +26,13 @@ DISPLAY_ROTATE_180 = True
 # ABS_Y is INVERTED on this display (high value at physical top, low at bottom).
 # These are used as os.environ defaults so the service env can still override.
 TOUCH_ROTATE_180 = True
-# Values below are extrapolated from near-corner touches (user tapped areas,
-# not exact corners).  Margins added to reach actual screen edges.
-# Observed X: 284–3876  →  padded to 200–3950
-# Observed Y top: ~3700 (inverted, high=top)  →  padded to 3800
-# Observed Y bottom: ~221 (inverted, low=bottom) →  padded to 150
-TOUCH_X_MIN = 200
-TOUCH_X_MAX = 3950
-TOUCH_Y_MIN = 3800   # inverted: high raw value = physical top
-TOUCH_Y_MAX = 150    # inverted: low raw value  = physical bottom
+# Full ADC range (12-bit = 0-4095).
+# ADS7846 Y axis is physically inverted on this panel (high raw = physical top),
+# so Y_MIN > Y_MAX to flip it.  TOUCH_ROTATE_180 then applies the 180° display flip.
+TOUCH_X_MIN = 0
+TOUCH_X_MAX = 4095
+TOUCH_Y_MIN = 4095   # inverted: high raw value = physical top
+TOUCH_Y_MAX = 0      # inverted: low raw value  = physical bottom
 DOUBLE_TAP_WINDOW_SECONDS = 0.70
 TOUCH_TAP_DEBOUNCE_SECONDS = 0.08
 DOUBLE_TAP_CYCLE_PAUSE_SECONDS = 20.0
