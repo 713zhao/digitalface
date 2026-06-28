@@ -90,6 +90,7 @@ def _create_game(key: str, driver, touch):
         surface=driver.surface,
         touch_driver=touch,
         driver=driver,
+        rotate_180=DISPLAY_ROTATE_180,
     )
     if key == "snake":
         return SnakeGame(**kwargs)
@@ -206,12 +207,20 @@ def run_framebuffer_mode(fbdev: str) -> None:
                 clock.tick(60)
 
                 if not game.running:
-                    # Game exited → back to face mode
+                    back_to_menu = getattr(game, 'back_to_menu', False)
                     game = None
-                    mode = "face"
                     driver.surface.fill((0, 0, 0))
                     driver.present()
                     last_touch_at = now  # reset idle timer
+                    if back_to_menu:
+                        menu = GameMenu(
+                            screen_width=WIDTH, screen_height=HEIGHT,
+                            surface=driver.surface, touch_driver=touch,
+                            driver=driver, rotate_180=DISPLAY_ROTATE_180,
+                        )
+                        mode = "menu"
+                    else:
+                        mode = "face"
 
             elif mode == "menu":
                 # ── Menu mode ────────────────────────────────────────────
@@ -255,6 +264,7 @@ def run_framebuffer_mode(fbdev: str) -> None:
                                 surface=driver.surface,
                                 touch_driver=touch,
                                 driver=driver,
+                                rotate_180=DISPLAY_ROTATE_180,
                             )
                             mode = "menu"
                     last_touch_tap_event_at = now

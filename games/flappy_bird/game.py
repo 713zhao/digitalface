@@ -6,6 +6,25 @@ import random
 import time
 import pygame
 
+try:
+    from driver.display_driver import touch_to_screen as _fb_to_screen
+except ImportError:
+    import os as _os
+
+    def _fb_to_screen(rx, ry, w, h, rotate_180=True):  # type: ignore[misc]
+        if rx < 0 or ry < 0:
+            return w // 2, h // 2
+        xmin = int(_os.environ.get("DIGITALFACE_TOUCH_X_MIN", "200"))
+        xmax = int(_os.environ.get("DIGITALFACE_TOUCH_X_MAX", "3900"))
+        ymin = int(_os.environ.get("DIGITALFACE_TOUCH_Y_MIN", "200"))
+        ymax = int(_os.environ.get("DIGITALFACE_TOUCH_Y_MAX", "3900"))
+        sx = (rx - xmin) / max(xmax - xmin, 1) * w
+        sy = (ry - ymin) / max(ymax - ymin, 1) * h
+        if rotate_180:
+            sx, sy = w - 1 - sx, h - 1 - sy
+        return int(max(0, min(w - 1, sx))), int(max(0, min(h - 1, sy)))
+
+
 _STATUS_BAR_H = 36  # pixels reserved at top for status HUD
 
 
@@ -118,7 +137,7 @@ class FlappyBirdGame:
     """Main game class."""
     
     def __init__(self, screen_width=480, screen_height=320, surface=None, touch_driver=None,
-                 character="dino", driver=None):
+                 character="dino", driver=None, rotate_180: bool = True):
         self.screen_width = screen_width
         self.screen_height = screen_height
         self.game_h = screen_height - _STATUS_BAR_H  # game-area height
@@ -126,6 +145,7 @@ class FlappyBirdGame:
         self._driver = driver
         self._use_sdl_display = (surface is None and driver is None)
         self._touch_driver = touch_driver
+        self._rotate_180 = rotate_180
         if surface is not None:
             self.surface = surface
         else:
@@ -145,6 +165,7 @@ class FlappyBirdGame:
 
         # Game state
         self.running = True
+        self.back_to_menu = False
         self.game_over = False
         self.game_over_at = 0.0
         self.game_over_timeout = 60.0
@@ -192,10 +213,13 @@ class FlappyBirdGame:
     def _draw_status_bar(self) -> None:
         """Paint the HUD: score (left), speed arrows (centre), level (right)."""
         self._status_view.fill((15, 15, 35))
+        # Back-to-menu hamburger button (tap anywhere in left 40px of status bar)
+        for i in range(3):
+            pygame.draw.rect(self._status_view, (140, 140, 190), (7, 8 + i * 7, 18, 3))
         font = pygame.font.Font(None, 30)
         # Score
         s = font.render(f"Bars: {self.score}", True, (230, 230, 230))
-        self._status_view.blit(s, (8, 6))
+        self._status_view.blit(s, (44, 6))
         # Level
         l_surf = font.render(f"Lv {self.level}", True, (200, 200, 100))
         self._status_view.blit(l_surf, l_surf.get_rect(topright=(self.screen_width - 8, 6)))
@@ -236,13 +260,18 @@ class FlappyBirdGame:
         """Handle pygame events."""
         # Poll touch driver with edge detection — jump only on finger-down, not hold
         if self._touch_driver is not None:
-            touched = self._touch_driver.poll()
-            rising_edge = touched and not self._prev_touched
-            self._prev_touched = touched
+            pressed, rx, ry = self._touch_driver.poll_xy()
+            rising_edge = pressed and not self._prev_touched
+            self._prev_touched = pressed
             if rising_edge:
                 current_time = time.time()
                 if current_time - self.last_touch_time > self.touch_debounce:
-                    if self.game_over:
+                    sx, sy = _fb_to_screen(rx, ry, self.screen_width, self.screen_height,
+                                           self._rotate_180)
+                    if sy < _STATUS_BAR_H and sx < 40:
+                        self.back_to_menu = True
+                        self.running = False
+                    elif self.game_over:
                         self.restart()
                     else:
                         self.bird.jump()

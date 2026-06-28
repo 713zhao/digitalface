@@ -69,6 +69,7 @@ class SnakeGame:
         self._game_view   = self.surface.subsurface((0, _STATUS_BAR_H, screen_width, self.game_h))
 
         self.running = True
+        self.back_to_menu = False
         self._prev_touched = False
         self._last_touch_time = 0.0
         self._touch_debounce = 0.18
@@ -92,6 +93,7 @@ class SnakeGame:
         self.game_over = False
         self.game_over_at = 0.0
         self.game_over_timeout = 30.0
+        self.back_to_menu = False
         self._status_dirty = True
         self._last_status = (-1, -1)
 
@@ -146,7 +148,12 @@ class SnakeGame:
             self._reset()
             return
 
-        sx, _sy = _to_screen(rx, ry, self.screen_width, self.screen_height, self._rotate_180)
+        sx, sy = _to_screen(rx, ry, self.screen_width, self.screen_height, self._rotate_180)
+        # Status bar back button (top-left 40px)
+        if sy < _STATUS_BAR_H and sx < 40:
+            self.back_to_menu = True
+            self.running = False
+            return
         # Left half = turn CCW, right half = turn CW
         if sx < self.screen_width // 2:
             self._next_dir = _CCW[self.direction]
@@ -271,9 +278,12 @@ class SnakeGame:
 
     def _draw_status(self) -> None:
         self._status_view.fill((15, 15, 35))
+        # Back-to-menu hamburger button (tap anywhere in left 40px of status bar)
+        for i in range(3):
+            pygame.draw.rect(self._status_view, (140, 140, 190), (7, 8 + i * 7, 18, 3))
         font = pygame.font.Font(None, 30)
         s = font.render(f"Length: {len(self.snake)}", True, (230, 230, 230))
-        self._status_view.blit(s, (8, 6))
+        self._status_view.blit(s, (44, 6))
         r = font.render(f"Food: {self.score}", True, (255, 120, 120))
         self._status_view.blit(r, r.get_rect(topright=(self.screen_width - 8, 6)))
         spd = pygame.font.Font(None, 20)
