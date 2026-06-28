@@ -122,9 +122,10 @@ class BreakoutGame:
         self.game_over = False
         self.won = False
         self.game_over_at = 0.0
-        self.game_over_timeout = 30.0
+        self.game_over_timeout = 60.0
         self.back_to_menu = False
         self._last_update = time.time()
+        self._last_input_time = time.time()
         self._status_dirty = True
         self._last_status = (-1, -1)
 
@@ -151,6 +152,8 @@ class BreakoutGame:
             return
 
         pressed, rx, ry = self._touch.poll_xy()
+        if pressed:
+            self._last_input_time = time.time()  # any touch resets idle timer
         rising = pressed and not self._prev_touched
         self._prev_touched = pressed
 
@@ -196,6 +199,11 @@ class BreakoutGame:
         if not self._launched:
             self.ball_x = self.pad_x + _PAD_W // 2
             self.ball_y = float(self.pad_y - _BALL_R - 1)
+            return
+
+        # Idle timeout — no touch for 60 s exits the game
+        if time.time() - self._last_input_time >= 60.0:
+            self.running = False
             return
 
         self.ball_x += self.ball_vx * dt
