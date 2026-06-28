@@ -14,29 +14,29 @@ def _draw_dino(surface: pygame.Surface, cx: int, cy: int, color=(100, 200, 80)) 
     e = (20, 20, 20)     # eye dark
     w = (255, 255, 255)  # eye shine
     # Tail tip + tail
-    pygame.draw.rect(surface, color, (cx - 14, cy, 3, 2))
-    pygame.draw.rect(surface, color, (cx - 12, cy - 1, 5, 3))
+    pygame.draw.rect(surface, color, (cx - 21, cy,      5,  3))
+    pygame.draw.rect(surface, color, (cx - 18, cy - 2,  8,  5))
     # Body
-    pygame.draw.rect(surface, color, (cx - 7, cy - 5, 14, 9))
+    pygame.draw.rect(surface, color, (cx - 11, cy - 8,  21, 14))
     # Back spine bump
-    pygame.draw.rect(surface, color, (cx - 5, cy - 8, 4, 3))
+    pygame.draw.rect(surface, color, (cx - 8,  cy - 12, 6,  5))
     # Neck
-    pygame.draw.rect(surface, color, (cx + 4, cy - 8, 4, 5))
+    pygame.draw.rect(surface, color, (cx + 6,  cy - 12, 6,  8))
     # Head
-    pygame.draw.rect(surface, color, (cx + 2, cy - 12, 8, 7))
+    pygame.draw.rect(surface, color, (cx + 3,  cy - 18, 12, 11))
     # Snout / lower jaw
-    pygame.draw.rect(surface, color, (cx + 6, cy - 7, 5, 4))
+    pygame.draw.rect(surface, color, (cx + 9,  cy - 11, 8,  6))
     # Eye
-    pygame.draw.rect(surface, e, (cx + 7, cy - 11, 2, 2))
-    pygame.draw.rect(surface, w, (cx + 8, cy - 11, 1, 1))
+    pygame.draw.rect(surface, e,     (cx + 11, cy - 17, 3,  3))
+    pygame.draw.rect(surface, w,     (cx + 12, cy - 17, 2,  2))
     # Arm stub
-    pygame.draw.rect(surface, color, (cx + 8, cy - 2, 3, 2))
+    pygame.draw.rect(surface, color, (cx + 12, cy - 3,  5,  3))
     # Front leg + foot
-    pygame.draw.rect(surface, color, (cx - 2, cy + 4, 4, 6))
-    pygame.draw.rect(surface, color, (cx - 3, cy + 9, 5, 2))
+    pygame.draw.rect(surface, color, (cx - 3,  cy + 6,  6,  9))
+    pygame.draw.rect(surface, color, (cx - 5,  cy + 14, 8,  3))
     # Back leg + foot
-    pygame.draw.rect(surface, color, (cx + 3, cy + 4, 4, 6))
-    pygame.draw.rect(surface, color, (cx + 2, cy + 9, 6, 2))
+    pygame.draw.rect(surface, color, (cx + 5,  cy + 6,  6,  9))
+    pygame.draw.rect(surface, color, (cx + 3,  cy + 14, 9,  3))
 
 
 class Bird:
