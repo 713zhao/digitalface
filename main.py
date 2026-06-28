@@ -20,6 +20,11 @@ FB_FPS = 20
 IDLE_TIMEOUT_SECONDS = 10 * 60
 DEFAULT_CYCLE_INTERVAL_SECONDS = 6
 DISPLAY_ROTATE_180 = True
+# Touch rotate_180 is independent of display rotation.
+# For XPT2046 displays where raw values are naturally inverted
+# (physical top-left → raw high values), set this to False so
+# the touch origin aligns with the visual origin after display rotation.
+TOUCH_ROTATE_180 = False
 DOUBLE_TAP_WINDOW_SECONDS = 0.70
 TOUCH_TAP_DEBOUNCE_SECONDS = 0.08
 DOUBLE_TAP_CYCLE_PAUSE_SECONDS = 20.0
@@ -90,7 +95,7 @@ def _create_game(key: str, driver, touch):
         surface=driver.surface,
         touch_driver=touch,
         driver=driver,
-        rotate_180=DISPLAY_ROTATE_180,
+        rotate_180=TOUCH_ROTATE_180,
     )
     if key == "snake":
         return SnakeGame(**kwargs)
@@ -216,7 +221,7 @@ def run_framebuffer_mode(fbdev: str) -> None:
                         menu = GameMenu(
                             screen_width=WIDTH, screen_height=HEIGHT,
                             surface=driver.surface, touch_driver=touch,
-                            driver=driver, rotate_180=DISPLAY_ROTATE_180,
+                            driver=driver, rotate_180=TOUCH_ROTATE_180,
                         )
                         mode = "menu"
                     else:
@@ -264,7 +269,7 @@ def run_framebuffer_mode(fbdev: str) -> None:
                                 surface=driver.surface,
                                 touch_driver=touch,
                                 driver=driver,
-                                rotate_180=DISPLAY_ROTATE_180,
+                                rotate_180=TOUCH_ROTATE_180,
                             )
                             mode = "menu"
                     last_touch_tap_event_at = now
