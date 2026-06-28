@@ -304,11 +304,12 @@ class SDLPresenter:
 
 
 class DisplayDriver:
-    def __init__(self, surface: pygame.Surface, presenter, width: int, height: int) -> None:
+    def __init__(self, surface: pygame.Surface, presenter, width: int, height: int, rotate_180: bool = False) -> None:
         self.surface = surface
         self.presenter = presenter
         self.width = width
         self.height = height
+        self.rotate_180 = rotate_180
         self.default_font = pygame.font.Font(None, 24)
         self.led_enabled = True
 
@@ -342,6 +343,9 @@ class DisplayDriver:
         (surface or self.surface).blit(rendered, pos)
 
     def present(self) -> None:
+        if self.rotate_180:
+            self.presenter.present(pygame.transform.flip(self.surface, True, True))
+            return
         self.presenter.present(self.surface)
 
     def set_led_enabled(self, enabled: bool) -> bool:
@@ -355,19 +359,19 @@ class DisplayDriver:
         self.presenter.close()
 
 
-def create_sdl_driver(width: int, height: int) -> DisplayDriver:
+def create_sdl_driver(width: int, height: int, rotate_180: bool = False) -> DisplayDriver:
     pygame.display.init()
     pygame.font.init()
     pygame.display.set_caption("Digital Face")
     surface = pygame.display.set_mode((width, height), pygame.FULLSCREEN)
-    return DisplayDriver(surface, SDLPresenter(), width, height)
+    return DisplayDriver(surface, SDLPresenter(), width, height, rotate_180=rotate_180)
 
 
-def create_framebuffer_driver(fbdev: str, width: int, height: int) -> DisplayDriver:
+def create_framebuffer_driver(fbdev: str, width: int, height: int, rotate_180: bool = False) -> DisplayDriver:
     pygame.font.init()
     surface = pygame.Surface((width, height))
     presenter = FramebufferPresenter(fbdev, width, height)
-    return DisplayDriver(surface, presenter, width, height)
+    return DisplayDriver(surface, presenter, width, height, rotate_180=rotate_180)
 
 
 def create_touch_driver(touchdevs: list[str] | None = None) -> TouchDriver:
