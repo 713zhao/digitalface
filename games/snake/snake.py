@@ -149,16 +149,31 @@ class SnakeGame:
             return
 
         sx, sy = _to_screen(rx, ry, self.screen_width, self.screen_height, self._rotate_180)
-        # Status bar back button (top-left 40px)
+        # Status bar back button (top-left 50px)
         if sy < _STATUS_BAR_H and sx < 50:
             self.back_to_menu = True
             self.running = False
             return
-        # Left half = turn CCW, right half = turn CW
-        if sx < self.screen_width // 2:
-            self._next_dir = _CCW[self.direction]
+        if sy < _STATUS_BAR_H:
+            return   # ignore other status bar taps
+
+        # D-pad zones: left strip / right strip / top-center / bottom-center
+        l_thresh = int(self.screen_width * 0.33)   # x < 158
+        r_thresh = int(self.screen_width * 0.67)   # x > 321
+        mid_y = (_STATUS_BAR_H + self.screen_height) // 2  # ~178
+
+        if sx < l_thresh:
+            new_dir = _L
+        elif sx > r_thresh:
+            new_dir = _R
+        elif sy < mid_y:
+            new_dir = _U
         else:
-            self._next_dir = _CW[self.direction]
+            new_dir = _D
+
+        # Reject 180° reversal (can't go back into yourself)
+        if (new_dir[0] + self.direction[0], new_dir[1] + self.direction[1]) != (0, 0):
+            self._next_dir = new_dir
 
     # ── update ──────────────────────────────────────────────────────────────
 
@@ -239,11 +254,19 @@ class SnakeGame:
                 ey = sr.y + 5
                 pygame.draw.circle(self._game_view, (0, 0, 0), (ex, ey), 2)
 
-        # Direction hint (small arrows at bottom of grid)
-        af = pygame.font.Font(None, 20)
-        hint = af.render("◄ turn   turn ►", True, (40, 80, 40))
-        self._game_view.blit(hint, hint.get_rect(center=(self.screen_width // 2,
-                                                          _MARGIN_Y + _ROWS * _CELL + 8)))
+        # Direction zone hint (arrows in each zone)
+        af = pygame.font.Font(None, 22)
+        lz = int(self.screen_width * 0.33)
+        rz = int(self.screen_width * 0.67)
+        mid_y_g = self.game_h // 2
+        self._game_view.blit(af.render("\u25c4", True, (40, 80, 40)),
+                             af.render("\u25c4", True, (40, 80, 40)).get_rect(center=(lz // 2, mid_y_g)))
+        self._game_view.blit(af.render("\u25ba", True, (40, 80, 40)),
+                             af.render("\u25ba", True, (40, 80, 40)).get_rect(center=((rz + self.screen_width) // 2, mid_y_g)))
+        self._game_view.blit(af.render("\u25b2", True, (40, 80, 40)),
+                             af.render("\u25b2", True, (40, 80, 40)).get_rect(center=(self.screen_width // 2, mid_y_g // 2)))
+        self._game_view.blit(af.render("\u25bc", True, (40, 80, 40)),
+                             af.render("\u25bc", True, (40, 80, 40)).get_rect(center=(self.screen_width // 2, mid_y_g + mid_y_g // 2)))
 
         # Game over overlay
         if self.game_over:
