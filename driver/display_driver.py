@@ -345,8 +345,10 @@ def touch_to_screen(
     x_max = int(os.environ.get("DIGITALFACE_TOUCH_X_MAX", "3900"))
     y_min = int(os.environ.get("DIGITALFACE_TOUCH_Y_MIN", "200"))
     y_max = int(os.environ.get("DIGITALFACE_TOUCH_Y_MAX", "3900"))
-    sx = (raw_x - x_min) / max(x_max - x_min, 1) * w
-    sy = (raw_y - y_min) / max(y_max - y_min, 1) * h
+    # Use signed division so that x_min > x_max or y_min > y_max (inverted axis)
+    # still maps correctly.  "or 1" only guards against a zero range.
+    sx = (raw_x - x_min) / (x_max - x_min or 1) * w
+    sy = (raw_y - y_min) / (y_max - y_min or 1) * h
     if rotate_180:
         sx = w - 1 - sx
         sy = h - 1 - sy
