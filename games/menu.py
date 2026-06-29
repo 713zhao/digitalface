@@ -62,7 +62,7 @@ class GameMenu:
 
         self._item_h = (screen_height - _HEADER_H) // len(GAME_LIST)
         self._prev_touched = False
-        self._last_touch_time = 0.0
+        self._last_touch_time = time.time()
         self._highlight_idx = -1
         self._highlight_until = 0.0
 

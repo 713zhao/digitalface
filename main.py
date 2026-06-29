@@ -18,6 +18,7 @@ HEIGHT = 320
 FPS = 30
 FB_FPS = 20
 IDLE_TIMEOUT_SECONDS = 10 * 60
+MENU_IDLE_TIMEOUT_SECONDS = 60
 DEFAULT_CYCLE_INTERVAL_SECONDS = 6
 DISPLAY_ROTATE_180 = True
 # Touch calibration for ADS7846/XPT2046 on this RPi 3.5" LCD.
@@ -247,6 +248,14 @@ def run_framebuffer_mode(fbdev: str) -> None:
                 if not menu.draw():
                     driver.present()
                 clock.tick(30)
+
+                if (now - menu._last_touch_time) >= MENU_IDLE_TIMEOUT_SECONDS:
+                    menu = None
+                    driver.surface.fill((0, 0, 0))
+                    driver.present()
+                    mode = "face"
+                    last_touch_at = now
+                    continue
 
                 if not menu.running:
                     chosen = menu.selected
