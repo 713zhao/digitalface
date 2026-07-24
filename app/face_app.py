@@ -66,7 +66,7 @@ def _lerp(a: int, b: int, t: float) -> int:
 
 
 class FaceApplication:
-    def __init__(self, driver: DisplayDriver, control_file: str, default_expression: str = "happy", pause_file: str | None = None, hmi_request_file: str | None = None, hmi_socket_file: str | None = None, hmi_default_duration: float = 10.0) -> None:
+    def __init__(self, driver: DisplayDriver, control_file: str, default_expression: str = "happy", pause_file: str | None = None, hmi_request_file: str | None = None, hmi_socket_file: str | None = None, hmi_default_duration: float = 10.0, hmi_status_file: str | None = None) -> None:
         self.driver = driver
         self.control_file = control_file
         self.pause_file = pause_file
@@ -78,6 +78,8 @@ class FaceApplication:
         self.bg_cache = {}
         self.hmi_request_file = hmi_request_file
         self.hmi_socket_file = hmi_socket_file
+        self.hmi_status_file = hmi_status_file
+        self._last_hmi_status_write_at = 0.0
         self.hmi_default_duration = hmi_default_duration
         self.hmi_text: str | None = None
         self.hmi_until: float = 0.0
@@ -155,6 +157,10 @@ class FaceApplication:
             self.blink_closed_until = now + 0.10
             self.next_blink_at = now + 2.0 + (math.sin(now) + 1.0) * 0.4
 
+        if now - self._last_hmi_status_write_at >= 0.5:
+            self._write_hmi_status(now)
+            self._last_hmi_status_write_at = now
+
     def render(self, now: float) -> None:
         if self.hmi_text is not None and (now < self.hmi_until or self.hmi_persistent):
             self._render_hmi_overlay(now)
@@ -191,6 +197,27 @@ class FaceApplication:
             self.hmi_next_repeat_at = 0.0
             self._display_changed = True
             self._dequeue_hmi(time.time())
+            self._write_hmi_status(time.time())
+
+    def _write_hmi_status(self, now: float) -> None:
+        """Persist current HMI overlay state so external tools (e.g. aireminder's
+        daily_event_scheduler) can detect when a message is still on screen vs.
+        dismissed by user touch."""
+        if not self.hmi_status_file:
+            return
+        try:
+            payload = {
+                "active_id": self._hmi_current_id,
+                "active": self.hmi_text is not None,
+                "queued_ids": [item.get("id") for item in self._hmi_queue if item.get("id")],
+                "updated_at": now,
+            }
+            tmp_path = f"{self.hmi_status_file}.tmp"
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f)
+            os.replace(tmp_path, self.hmi_status_file)
+        except OSError:
+            pass
 
     def close(self) -> None:
         sock = self._hmi_socket
@@ -235,6 +262,7 @@ class FaceApplication:
                 self._hmi_current_id = None
                 self._hmi_active_messages.clear()
                 self._display_changed = True
+                self._write_hmi_status(now)
             elif isinstance(dismiss_target, str):
                 # Dismiss specific ID
                 if dismiss_target in self._hmi_active_messages:
@@ -250,6 +278,7 @@ class FaceApplication:
                     self.hmi_persistent = False
                     self._display_changed = True
                     self._dequeue_hmi(now)
+                    self._write_hmi_status(now)
             return
         
         # Parse new message (Protocol v2)
@@ -318,6 +347,7 @@ class FaceApplication:
         # If not currently showing anything, start showing this
         if self.hmi_text is None:
             self._dequeue_hmi(now)
+        self._write_hmi_status(now)
 
     def _poll_hmi_socket(self, now: float) -> None:
         if self._hmi_socket is None:
@@ -349,6 +379,7 @@ class FaceApplication:
         self.hmi_text = item["text"]
         self.hmi_duration = item["duration"]
         self.hmi_until = now + item["duration"]
+        self.hmi_persistent = item.get("persistent", False)
         self._hmi_current_id = item.get("id")
         self.hmi_type = item.get("type", "text")
         self.hmi_image_path = item.get("image_path")

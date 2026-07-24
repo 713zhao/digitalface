@@ -26,10 +26,16 @@ DISPLAY_ROTATE_180 = True
 #   TL=(413,3562)  TR=(3721,3596)  BL=(307,324)  BR=(3819,368)
 # ABS_Y is INVERTED on this display (high value at physical top, low at bottom).
 # These are used as os.environ defaults so the service env can still override.
-TOUCH_ROTATE_180 = True
+# NOTE: the corners above were touched as they visually appear on the mounted
+# screen (i.e. already in the post-DISPLAY_ROTATE_180 orientation), so the
+# raw->pixel mapping in touch_to_screen() already lands on the correct on-screen
+# spot. TOUCH_ROTATE_180 must stay False, otherwise touch_to_screen() mirrors
+# an already-correct point a second time (touch left -> registers on the
+# right, touch top -> registers on the bottom).
+TOUCH_ROTATE_180 = False
 # Full ADC range (12-bit = 0-4095).
 # ADS7846 Y axis is physically inverted on this panel (high raw = physical top),
-# so Y_MIN > Y_MAX to flip it.  TOUCH_ROTATE_180 then applies the 180° display flip.
+# so Y_MIN > Y_MAX to flip it.
 TOUCH_X_MIN = 0
 TOUCH_X_MAX = 4095
 TOUCH_Y_MIN = 4095   # inverted: high raw value = physical top
@@ -43,6 +49,7 @@ FACE_CONTROL_FILE = os.path.join(RUNTIME_DIR, "digitalface_expression")
 FACE_CONTROL_PAUSE_FILE = os.path.join(RUNTIME_DIR, "digitalface_expression_pause_until")
 HMI_REQUEST_FILE = os.path.join(RUNTIME_DIR, "digitalface_hmi_request")
 HMI_SOCKET_FILE = os.path.join(RUNTIME_DIR, "digitalface_hmi.sock")
+HMI_STATUS_FILE = os.path.join(RUNTIME_DIR, "digitalface_hmi_status.json")
 HMI_DEFAULT_DURATION_SECONDS = 10
 _lock_handle = None
 
@@ -123,7 +130,7 @@ def handle_tap_for_next_face(app: FaceApplication, now: float, last_tap_at: floa
 
 def run_sdl_mode() -> None:
     driver = create_sdl_driver(WIDTH, HEIGHT, rotate_180=DISPLAY_ROTATE_180)
-    app = FaceApplication(driver, FACE_CONTROL_FILE, default_expression="happy", pause_file=FACE_CONTROL_PAUSE_FILE, hmi_request_file=HMI_REQUEST_FILE, hmi_socket_file=HMI_SOCKET_FILE, hmi_default_duration=HMI_DEFAULT_DURATION_SECONDS)
+    app = FaceApplication(driver, FACE_CONTROL_FILE, default_expression="happy", pause_file=FACE_CONTROL_PAUSE_FILE, hmi_request_file=HMI_REQUEST_FILE, hmi_socket_file=HMI_SOCKET_FILE, hmi_default_duration=HMI_DEFAULT_DURATION_SECONDS, hmi_status_file=HMI_STATUS_FILE)
     clock = pygame.time.Clock()
     last_tap_at = 0.0
     last_touch_at = time.time()
@@ -192,7 +199,7 @@ def run_framebuffer_mode(fbdev: str) -> None:
 
     driver = create_framebuffer_driver(fbdev, WIDTH, HEIGHT, rotate_180=DISPLAY_ROTATE_180)
     touch = create_touch_driver()
-    app = FaceApplication(driver, FACE_CONTROL_FILE, default_expression="happy", pause_file=FACE_CONTROL_PAUSE_FILE, hmi_request_file=HMI_REQUEST_FILE, hmi_socket_file=HMI_SOCKET_FILE, hmi_default_duration=HMI_DEFAULT_DURATION_SECONDS)
+    app = FaceApplication(driver, FACE_CONTROL_FILE, default_expression="happy", pause_file=FACE_CONTROL_PAUSE_FILE, hmi_request_file=HMI_REQUEST_FILE, hmi_socket_file=HMI_SOCKET_FILE, hmi_default_duration=HMI_DEFAULT_DURATION_SECONDS, hmi_status_file=HMI_STATUS_FILE)
     clock = pygame.time.Clock()
     last_tap_at = 0.0
     last_touch_tap_event_at = 0.0
