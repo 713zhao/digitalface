@@ -314,7 +314,7 @@ Expected behavior:
 Tip:
 
 - For rapid testing during development, temporarily reduce timeout in `main.py`:
-  - change `IDLE_TIMEOUT_SECONDS = 10 * 60` to e.g. `30`
+  - change `DASHBOARD_IDLE_TIMEOUT_SECONDS = 10 * 60` / `BLACKSCREEN_IDLE_TIMEOUT_SECONDS = 60 * 60` to e.g. `30`
   - restore it to 10 minutes after validation.
 
 ### Backlight control notes (mhs35/tft35a)

@@ -24,10 +24,13 @@ except ImportError:
 
 
 # Each entry: (key, display_name, accent_colour)
+# "dashboard" is not a game — main.py intercepts it and switches to the
+# Smart Home Command Center screen instead of launching a game.
 GAME_LIST = [
-    ("flappy",   "Flappy Dino",  (100, 210,  80)),
-    ("snake",    "Snake",        ( 60, 200, 120)),
-    ("breakout", "Breakout",     ( 80, 140, 255)),
+    ("flappy",    "Flappy Dino",  (100, 210,  80)),
+    ("snake",     "Snake",        ( 60, 200, 120)),
+    ("breakout",  "Breakout",     ( 80, 140, 255)),
+    ("dashboard", "Smart Home",   (  0, 230, 118)),
 ]
 
 _HEADER_H = 52   # pixels reserved for the title row
@@ -81,6 +84,13 @@ class GameMenu:
                     self._pick(1)
                 elif event.key in (pygame.K_3, pygame.K_KP3):
                     self._pick(2)
+            elif event.type == pygame.MOUSEBUTTONDOWN and self._touch is None:
+                _sx, sy = event.pos
+                if sy < _HEADER_H:
+                    continue
+                idx = (sy - _HEADER_H) // self._item_h
+                if 0 <= idx < len(GAME_LIST):
+                    self._pick(idx)
 
         if self._touch is None:
             return
@@ -119,7 +129,7 @@ class GameMenu:
 
         # ── header ──────────────────────────────────────────────────────
         hfont = pygame.font.Font(None, 40)
-        title = hfont.render("SELECT GAME", True, (180, 180, 255))
+        title = hfont.render("MENU", True, (180, 180, 255))
         self.surface.blit(title, title.get_rect(center=(self.screen_width // 2, _HEADER_H // 2)))
         pygame.draw.line(self.surface, (50, 50, 110),
                          (0, _HEADER_H - 1), (self.screen_width - 1, _HEADER_H - 1), 2)
