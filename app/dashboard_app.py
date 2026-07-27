@@ -195,7 +195,7 @@ class DashboardApp:
     ALERT_RED = (0xFF, 0x52, 0x52)
     ACCENT_YELLOW = (255, 214, 0)
     TEXT = (0xFF, 0xFF, 0xFF)
-    MUTED = (150, 150, 150)
+    MUTED = (0x4F, 0xC3, 0xF7)
 
     STATUS_BAR_H = 30
     DOTS_H = 14
